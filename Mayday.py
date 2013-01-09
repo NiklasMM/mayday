@@ -1,7 +1,8 @@
 # -*- coding: UTF-8 -*-
 
 import pygame
-import Menu
+from ScreenManager import ScreenManager
+from Menu import Menu
   
 def main():
   # initialize pygame
@@ -19,8 +20,10 @@ def main():
   # create clock object used to limit the framerate
   clock = pygame.time.Clock()
 
-  # create menu object
-  menu = Menu.Menu();
+  # create the screen manager
+  screenManager = ScreenManager()
+
+  screenManager.addScreen(Menu(), True)
  
   # main loop
   running = True
@@ -35,10 +38,10 @@ def main():
         running = False
       
       # other events are handed down to the screen
-      menu.update(event)
+      screenManager.update(event)
  
     # draw stuff
-    menu.draw(screen);
+    screenManager.draw(screen);
 
     # actually draw the stuff
     pygame.display.flip()
