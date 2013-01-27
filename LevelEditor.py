@@ -101,6 +101,7 @@ class AddStraightButton(Button):
   def clickAction(self):
     global objectsList
     objectsList.append(Straight((-20,-20,-20),(20,50,20)))
+    infoMessage("Straight object added.")
 
 
 class Straight(clickRegisteringObject):
@@ -351,7 +352,7 @@ def main():
         for obj in objectsList:
           if obj.checkClicked():
             selectObjects(obj)
-            infoMessage("Object clicked!")
+            infoMessage("Object selected (via Click).")
 
     pressed_keys = pygame.key.get_pressed()
     rerender = False
@@ -460,13 +461,13 @@ def main():
                                  .5*(boxStartPoint[1]+boxEndPoint[1]))
       screen.blit(selectionBox, selectionBoxRect)
       selectObjects()
+      infoMessage("All deselected.")
       for obj in objectsList:
         if obj.inRect(selectionBoxRect):
           selectObjects(obj, True)
-          infoMessage("Object selected (Box)")
+          infoMessage("Object selected (via Box).")
 
     # mark selected objects:
-    print selectedObjects
     for o in selectedObjects:
       markObject(o, screen)
 
