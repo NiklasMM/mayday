@@ -17,6 +17,7 @@
 import pygame
 from math import pi, sin, cos
 import logging, sys, os
+from collections import deque
 
 SCRIPT_PATH = os.path.dirname(__file__)
 
@@ -35,6 +36,8 @@ up = [0, sin(elevation)]
 zoom = 1.
 
 objectsList = []
+selectedObjects = []
+messageQueue = deque()
 
 
 class displayedObject(object):
@@ -52,6 +55,9 @@ class clickRegisteringObject(displayedObject):
     return self.rect.collidepoint(mouse) and \
            self.surfaceObj.get_at((mouse[0]-self.rect.topleft[0],
                                    mouse[1]-self.rect.topleft[1])) != (0, 0, 0, 0)
+
+  def inRect(self, rect):
+    return rect.collidepoint(self.rect.center)
 
 
 
@@ -233,6 +239,57 @@ def makeButtons():
 
 
 
+def infoMessage(msg):
+  """append a message to the queue and keep the queue at a max length"""
+  messageQueue.append(msg)
+  if len(messageQueue) > 8:
+    messageQueue.popleft()
+
+
+
+def selectObjects(obj=[], add=False):
+  global selectedObjects
+  if not obj:
+    selectedObjects = []
+  elif isinstance(obj, list):
+    if add:
+      selectedObjects.extend(obj)
+    else:
+      selectedObjects = obj
+  else:
+    if add and obj not in selectedObjects:
+      selectedObjects.append(obj)
+    else:
+      selectedObjects = [obj]
+
+
+
+def markObject(obj, screen):
+  markersize = 15
+  marker = pygame.Surface(obj.rect.size)
+  marker = marker.convert_alpha()
+  pointslist = [(min(markersize, obj.rect.width-1), 0),
+                (0, 0),
+                (0, min(markersize, obj.rect.height-1))]
+  pygame.draw.lines(marker, (255, 255, 255), False, pointslist, 1)
+  pointslist = [(obj.rect.width-1 - min(markersize, obj.rect.width-1), 0),
+                (obj.rect.width-1, 0),
+                (obj.rect.width-1, min(markersize, obj.rect.height-1))]
+  pygame.draw.lines(marker, (255, 255, 255), False, pointslist, 1)
+  pointslist = [(min(markersize, obj.rect.width-1), obj.rect.height-1),
+                (0, obj.rect.height-1),
+                (0, obj.rect.height-1 - min(markersize, obj.rect.height-1))]
+  pygame.draw.lines(marker, (255, 255, 255), False, pointslist, 1)
+  pointslist = [(obj.rect.width-1 - min(markersize, obj.rect.width-1), obj.rect.height-1),
+                (obj.rect.width-1, obj.rect.height-1),
+                (obj.rect.width-1, obj.rect.height-1 - min(markersize, obj.rect.height-1))]
+  pygame.draw.lines(marker, (255, 255, 255), False, pointslist, 1)
+  pixels = pygame.PixelArray(marker)
+  pixels.replace(pygame.Color(0, 0, 0, 255), pygame.Color(0, 0, 0, 0))
+  del pixels
+  screen.blit(marker, obj.rect)
+
+
 
 def main():
   logging.basicConfig(level=logging.DEBUG,
@@ -263,6 +320,8 @@ def main():
   CursorSurfaceObj.fill((0, 0, 0))
 
   buttons = makeButtons()
+  boxSelectionInProgress = False
+  boxStartPoint = (0, 0)
 
 
   # MAIN LOOP
@@ -281,13 +340,18 @@ def main():
           logging.debug("Quitting (ESC key)")
           running = False
       elif event.type == pygame.MOUSEBUTTONDOWN:
+        boxSelectionInProgress = True
+        boxStartPoint = pygame.mouse.get_pos()
+      elif event.type == pygame.MOUSEBUTTONUP:
+        boxSelectionInProgress = False
         for button in buttons:
           if button.checkClicked():
             button.activate()
             button.clickAction()
         for obj in objectsList:
           if obj.checkClicked():
-            logging.debug("Object clicked!")
+            selectObjects(obj)
+            infoMessage("Object clicked!")
 
     pressed_keys = pygame.key.get_pressed()
     rerender = False
@@ -357,26 +421,20 @@ def main():
     textRect = textObj.get_rect()
     textRect.topleft = (0, 15)
     screen.blit(textObj, textRect)
-    text = "Use WASD to rotate the camera (isometric projection, camera is at window center)."
-    textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (0, WINDOW_SIZE[1]-60)
-    screen.blit(textObj, textRect)
-    text = "Move the cursor with the ARROW KEYS and PAGE-UP/DOWN."
-    textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (0, WINDOW_SIZE[1]-45)
-    screen.blit(textObj, textRect)
-    text = "Zoom in and out using the + (plus) and - (minus) keys."
-    textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (0, WINDOW_SIZE[1]-30)
-    screen.blit(textObj, textRect)
-    text = "Press HOME to reset the camera."
-    textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (0, WINDOW_SIZE[1]-15)
-    screen.blit(textObj, textRect)
+    lines = ["Use WASD to rotate the camera (isometric projection, camera is at window center).",
+             "Move the cursor with the ARROW KEYS and PAGE-UP/DOWN.",
+             "Zoom in and out using the + (plus) and - (minus) keys.",
+             "Press HOME to reset the camera."]
+    for i in range(4):
+      textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
+      textRect = textObj.get_rect()
+      textRect.topleft = (0, WINDOW_SIZE[1]-(i+1)*15)
+      screen.blit(textObj, textRect)
+    for i, m in enumerate(messageQueue):
+      textObj = pygame.font.SysFont(None, 18).render(messageQueue[i], True, (0, 0, 0))
+      textRect = textObj.get_rect()
+      textRect.topright = (WINDOW_SIZE[0]-5, WINDOW_SIZE[1]-(i+1)*15)
+      screen.blit(textObj, textRect)
 
     # draw lines to visualize the cursor's position in 3D space
     drawHelpLines(cursor_position, screen)
@@ -384,6 +442,33 @@ def main():
     # draw objects
     for o in objectsList:
       o.draw(screen)
+
+    # draw selection box and select objects within
+    if boxSelectionInProgress:
+      boxEndPoint = pygame.mouse.get_pos()
+      minx = min(boxStartPoint[0], boxEndPoint[0])
+      maxx = max(boxStartPoint[0], boxEndPoint[0])
+      miny = min(boxStartPoint[1], boxEndPoint[1])
+      maxy = max(boxStartPoint[1], boxEndPoint[1])
+      selectionBox = pygame.Surface((maxx-minx, maxy-miny))
+      selectionBox.fill((150,150,255))
+      pointslist = [(0,0),(maxx-minx-1,0),(maxx-minx-1,maxy-miny-1),(0,maxy-miny-1)]
+      pygame.draw.lines(selectionBox, (0, 0, 255), True, pointslist, 1)
+      selectionBox.set_alpha(100)
+      selectionBoxRect = selectionBox.get_rect()
+      selectionBoxRect.center = (.5*(boxStartPoint[0]+boxEndPoint[0]),
+                                 .5*(boxStartPoint[1]+boxEndPoint[1]))
+      screen.blit(selectionBox, selectionBoxRect)
+      selectObjects()
+      for obj in objectsList:
+        if obj.inRect(selectionBoxRect):
+          selectObjects(obj, True)
+          infoMessage("Object selected (Box)")
+
+    # mark selected objects:
+    print selectedObjects
+    for o in selectedObjects:
+      markObject(o, screen)
 
     # draw GUI
     for button in buttons:
