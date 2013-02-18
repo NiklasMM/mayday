@@ -9,9 +9,16 @@
 # TODO
 # - mouse camera ?
 # - clickable game objects / how precise?
-# - z-ordering
+# - z-ordering (treap?)
 # - adding / moving objects
 # - autojoining objects at ends to form a path
+#
+# - wind (+ graphic effects?)
+# - cosmetic effects: rain, snow (particles?)
+# - windfarms, birds, cars on highways
+# - cloud shadows
+# - level graphic sets for different daytimes, weather conditions
+# - graphic sets change with the daytime
 ########################################################################
 
 import pygame
@@ -27,6 +34,11 @@ ROTATION_ANGULAR_SPEED = 0.05
 ELEVATION_ANGULAR_SPEED = 0.05
 ZOOM_IN_SPEED = 1.05
 ZOOM_OUT_SPEED = 0.95
+MOUSE_ROTATION_ANGULAR_SPEED = 0.1
+MOUSE_ELEVATION_ANGULAR_SPEED = 0.1
+MOUSE_ZOOM_IN_SPEED = 0.5
+MOUSE_ZOOM_OUT_SPEED = 0.5
+
 
 rotation = -45*(pi/180.)
 elevation = -66*(pi/180.)
@@ -40,21 +52,29 @@ selectedObjects = []
 messageQueue = deque()
 
 
+tooltip_texts = {"AddStraightButton": "add a straight path piece",
+                 "AppendStraightButton": "append a straight path piece to a selected path piece"}
+
+
 class displayedObject(object):
   def __init__(self):
     self.surfaceObj = None
     self.rect = None
+
+  def render(self):
+    return None
 
 
 class clickRegisteringObject(displayedObject):
   def __init__(self):
     super(clickRegisteringObject, self).__init__()
 
-  def checkClicked(self):
-    mouse = pygame.mouse.get_pos()
-    return self.rect.collidepoint(mouse) and \
-           self.surfaceObj.get_at((mouse[0]-self.rect.topleft[0],
-                                   mouse[1]-self.rect.topleft[1])) != (0, 0, 0, 0)
+  def cursorOnObject(self, mousePos=None):
+    if mousePos is None:
+      mousePos = pygame.mouse.get_pos()
+    return self.rect.collidepoint(mousePos) and \
+           self.surfaceObj.get_at((mousePos[0]-self.rect.topleft[0],
+                                   mousePos[1]-self.rect.topleft[1])) != (0, 0, 0, 0)
 
   def inRect(self, rect):
     return rect.collidepoint(self.rect.center)
@@ -72,7 +92,7 @@ class Button(clickRegisteringObject):
     self.active = False
 
   def clickAction(self):
-    pass
+    return None
 
   def setRectangle(self, newRectangle):
     self.rect = newRectangle
@@ -89,19 +109,56 @@ class Button(clickRegisteringObject):
     else:
       screen.blit(self.surfaceObj, self.rect)
 
+  def tooltip(self, screen, mousePos=None, text="<<<self.tooltip.text>>>"):
+    """check cursorOnObject before calling!"""
+    if mousePos is None:
+      mousePos = pygame.mouse.get_pos()
+    tmpTooltipTextObj = pygame.font.SysFont(None, 20).render(text, True, (0, 0, 0), (255, 255, 255))
+    tmpTooltipTextObjRect = tmpTooltipTextObj.get_rect()
+    tmpTooltipTextObjRect.topright = (mousePos[0]-5, mousePos[1]+5)
+    screen.blit(tmpTooltipTextObj, tmpTooltipTextObjRect)
+
 
 class AddStraightButton(Button):
   def __init__(self, name="AddStraightButton", buttonRect=pygame.Rect(0,0,0,0),
                buttonSurfaceObj=pygame.Surface((0,0)),
                buttonClickedSurfaceObj=pygame.Surface((0,0))):
-    img = pygame.image.load('{}/img/straight.png'.format(SCRIPT_PATH))
-    clickedImg = pygame.image.load('{}/img/straightClicked.png'.format(SCRIPT_PATH))
+    img = pygame.image.load('{}/img/addstraight.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/addstraightClicked.png'.format(SCRIPT_PATH))
     super(AddStraightButton, self).__init__(name, buttonRect, img, clickedImg)
 
   def clickAction(self):
     global objectsList
     objectsList.append(Straight((-20,-20,-20),(20,50,20)))
     infoMessage("Straight object added.")
+
+  def tooltip(self, screen, mousePos=None):
+    if mousePos is None:
+      mousePos = pygame.mouse.get_pos()
+    super(AddStraightButton, self).tooltip(screen, mousePos, tooltip_texts["AddStraightButton"])
+
+
+
+class AppendStraightButton(Button):
+  def __init__(self, name="AppendStraightButton", buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/appendstraight.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/appendstraightClicked.png'.format(SCRIPT_PATH))
+    super(AppendStraightButton, self).__init__(name, buttonRect, img, clickedImg)
+
+  def clickAction(self):
+    if not selectedObjects:
+      infoMessage("must select a single path piece to append (none selected)")
+    elif len(selectedObjects) > 1:
+      infoMessage("must select a single path piece to append (%d selected)" % len(selectedObjects))
+    else:
+      infoMessage("I am not doing anything =(")
+
+  def tooltip(self, screen, mousePos=None):
+    if mousePos is None:
+      mousePos = pygame.mouse.get_pos()
+    super(AppendStraightButton, self).tooltip(screen, mousePos, tooltip_texts["AppendStraightButton"])
 
 
 class Straight(clickRegisteringObject):
@@ -147,12 +204,13 @@ class Straight(clickRegisteringObject):
     screen.blit(self.surfaceObj, self.rect)
 
 
-
 def compute_projection_parameters(newrotation, newelevation, newzoom):
   "changes the camera perspective"
   global rotation, elevation, right, front, up, zoom
   rotation = newrotation
-  elevation = newelevation
+  while rotation < 0.: rotation += 2*pi
+  while rotation > 2*pi: rotation -= 2*pi
+  elevation = min(0., max(-pi, newelevation))
   right = [cos(rotation), sin(rotation) * cos(elevation)]
   front = [sin(rotation), -cos(rotation) * cos(elevation)]
   up = [0, sin(elevation)]
@@ -229,12 +287,17 @@ def render_background(screen):
 def makeButtons():
   """initialize GUI buttons, returns a list of BUTTONs"""
   buttons = []
+  to_make = ((AddStraightButton, "addStraight"),
+             (AppendStraightButton, "appendStraight"))
+  x, y = WINDOW_SIZE[0], 0
 
-  newButton = AddStraightButton("addStraight")
-  rect = newButton.surfaceObj.get_rect()
-  rect.topright = (WINDOW_SIZE[0],0)
-  newButton.setRectangle(rect)
-  buttons.append(newButton)
+  for buttonClass, name in to_make:
+    newButton = buttonClass(name)
+    rect = newButton.surfaceObj.get_rect()
+    rect.topright = (x, y)
+    newButton.setRectangle(rect)
+    buttons.append(newButton)
+    y += 50
 
   return buttons
 
@@ -248,20 +311,29 @@ def infoMessage(msg):
 
 
 
-def selectObjects(obj=[], add=False):
+def deselectObjects(obj=None):
   global selectedObjects
-  if not obj:
+  if obj is None:
     selectedObjects = []
-  elif isinstance(obj, list):
-    if add:
-      selectedObjects.extend(obj)
-    else:
-      selectedObjects = obj
   else:
-    if add and obj not in selectedObjects:
-      selectedObjects.append(obj)
-    else:
-      selectedObjects = [obj]
+    if isinstance(obj, list):
+      for newObject in obj:
+        if newObject in selectedObjects:
+          selectedObjects.remove(newObject)
+    elif obj in selectedObjects:
+        selectedObjects.remove(obj)
+
+
+
+def selectObjects(obj=None):
+  global selectedObjects
+  if obj is not None:
+    if isinstance(obj, list):
+      for newObject in obj:
+        if newObject not in selectedObjects:
+          selectedObjects.append(newObject)
+    elif obj not in selectedObjects:
+        selectedObjects.append(obj)
 
 
 
@@ -320,7 +392,7 @@ def main():
   CursorSurfaceObj = pygame.Surface((1, 1))
   CursorSurfaceObj.fill((0, 0, 0))
 
-  buttons = makeButtons()
+  objectsList.extend(makeButtons())
   boxSelectionInProgress = False
   boxStartPoint = (0, 0)
 
@@ -331,8 +403,17 @@ def main():
     # limit to 30 fps
     clock.tick(30)
 
+    # pygame.mouse.get_pressed() only works after retrieving events
+    thisTickEvents = pygame.event.get()
+
+    # check mouse keys (not events)
+    leftButton, middleButton, rightButton = pygame.mouse.get_pressed()
+
+    # relative mouse movement since the last tick
+    mouseRelX, mouseRelY = pygame.mouse.get_rel()
+
     # get all events
-    for event in pygame.event.get():
+    for event in thisTickEvents:
       # quit game if quit event is registered
       if event.type == pygame.QUIT:
         running = False
@@ -340,19 +421,28 @@ def main():
         if event.key == pygame.K_ESCAPE:
           logging.debug("Quitting (ESC key)")
           running = False
-      elif event.type == pygame.MOUSEBUTTONDOWN:
-        boxSelectionInProgress = True
-        boxStartPoint = pygame.mouse.get_pos()
+      elif event.type == pygame.MOUSEBUTTONDOWN and leftButton:
+        buttonWasClicked = False
+        for o in objectsList:
+          if isinstance(o, Button) and o.cursorOnObject():
+            buttonWasClicked = True
+            o.activate()
+            o.clickAction()
+        if not buttonWasClicked:
+          deselectObjects()
+          boxSelectionInProgress = True
+          boxStartPoint = pygame.mouse.get_pos()
       elif event.type == pygame.MOUSEBUTTONUP:
         boxSelectionInProgress = False
-        for button in buttons:
-          if button.checkClicked():
-            button.activate()
-            button.clickAction()
-        for obj in objectsList:
-          if obj.checkClicked():
-            selectObjects(obj)
-            infoMessage("Object selected (via Click).")
+        for o in objectsList:
+          if o.cursorOnObject():
+            if isinstance(o, Button):
+              pass
+              # o.activate()
+              # o.clickAction()
+            else:
+              selectObjects(o)
+              infoMessage("Object selected (via Click).")
 
     pressed_keys = pygame.key.get_pressed()
     rerender = False
@@ -369,7 +459,8 @@ def main():
       cursor_position[2] += 10
     if pressed_keys[pygame.K_PAGEDOWN]:
       cursor_position[2] -= 10
-    # change camera settings
+
+    # change camera settings using keyboard
     if pressed_keys[pygame.K_a]:
       compute_projection_parameters(rotation-ROTATION_ANGULAR_SPEED, elevation, zoom)
       rerender = True
@@ -386,11 +477,42 @@ def main():
       compute_projection_parameters(-45*(pi/180.), -66*(pi/180.), 1.0)
       rerender = True
     if pressed_keys[pygame.K_MINUS]:
-      compute_projection_parameters(rotation, elevation, zoom * ZOOM_OUT_SPEED)
+      compute_projection_parameters(rotation, elevation, zoom*ZOOM_OUT_SPEED)
       rerender = True
     if pressed_keys[pygame.K_PLUS]:
-      compute_projection_parameters(rotation, elevation, zoom * ZOOM_IN_SPEED)
+      compute_projection_parameters(rotation, elevation, zoom*ZOOM_IN_SPEED)
       rerender = True
+
+    # change camera settings using mouse
+    if middleButton:
+      if mouseRelX != 0:
+        compute_projection_parameters(rotation-ROTATION_ANGULAR_SPEED*
+                                               mouseRelX*
+                                               MOUSE_ROTATION_ANGULAR_SPEED,
+                                      elevation, zoom)
+        rerender = True
+      if mouseRelY != 0:
+        compute_projection_parameters(rotation,
+                                      elevation+ELEVATION_ANGULAR_SPEED*
+                                                mouseRelY*
+                                                MOUSE_ELEVATION_ANGULAR_SPEED,
+                                      zoom)
+        rerender = True
+    if rightButton:
+      if mouseRelY < 0:
+        compute_projection_parameters(rotation,
+                                      elevation,
+                                      zoom*ZOOM_IN_SPEED**
+                                        (-mouseRelY*MOUSE_ZOOM_IN_SPEED))
+        rerender = True
+      if mouseRelY > 0:
+        compute_projection_parameters(rotation,
+                                      elevation,
+                                      zoom*ZOOM_OUT_SPEED**
+                                        (mouseRelY*MOUSE_ZOOM_OUT_SPEED))
+        rerender = True
+
+
     if rerender:
       BGSurfaceObj = render_background(screen)
       for o in objectsList:
@@ -412,19 +534,17 @@ def main():
     screen.blit(textObj, textRect)
 
     # render info text about rotation and elevation angles
-    text = "Rotation angle = %.2f RAD (ca. %d DEG)" % (rotation, rotation*180./pi)
-    textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (0, 0)
-    screen.blit(textObj, textRect)
-    text = "Elevation angle = %.2f RAD (ca. %d DEG)" % (elevation, elevation*180./pi)
-    textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (0, 15)
-    screen.blit(textObj, textRect)
-    lines = ["Use WASD to rotate the camera (isometric projection, camera is at window center).",
+    lines = ["Rotation angle = %.2f RAD (ca. %d DEG)" % (rotation, rotation*180./pi),
+             "Elevation angle = %.2f RAD (ca. %d DEG)" % (elevation, elevation*180./pi),
+             "Zoom factor = %.2f" % zoom]
+    for i in range(3):
+      textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
+      textRect = textObj.get_rect()
+      textRect.topleft = (0, i*15)
+      screen.blit(textObj, textRect)
+    lines = ["Use WASD or MIDDLE MOUSE BUTTON to rotate the camera (isometric projection, camera is at window center).",
              "Move the cursor with the ARROW KEYS and PAGE-UP/DOWN.",
-             "Zoom in and out using the + (plus) and - (minus) keys.",
+             "Zoom in and out using the + (plus) and - (minus) keys or RIGHT MOUSE BUTTON.",
              "Press HOME to reset the camera."]
     for i in range(4):
       textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
@@ -460,11 +580,10 @@ def main():
       selectionBoxRect.center = (.5*(boxStartPoint[0]+boxEndPoint[0]),
                                  .5*(boxStartPoint[1]+boxEndPoint[1]))
       screen.blit(selectionBox, selectionBoxRect)
-      selectObjects()
-      infoMessage("All deselected.")
+      deselectObjects()
       for obj in objectsList:
         if obj.inRect(selectionBoxRect):
-          selectObjects(obj, True)
+          selectObjects(obj)
           infoMessage("Object selected (via Box).")
 
     # mark selected objects:
@@ -472,9 +591,14 @@ def main():
       markObject(o, screen)
 
     # draw GUI
-    for button in buttons:
-      button.draw(screen)
-      button.deactivate()
+    for o in objectsList:
+      if isinstance(o, Button):
+        o.draw(screen)
+        o.deactivate()
+    # draw GUI tooltips
+    for o in objectsList:
+      if isinstance(o, Button) and o.cursorOnObject():
+        o.tooltip(screen)
 
     # actually draw the stuff to screen
     pygame.display.flip()
