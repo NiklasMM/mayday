@@ -39,6 +39,8 @@ MOUSE_ELEVATION_ANGULAR_SPEED = 0.1
 MOUSE_ZOOM_IN_SPEED = 0.5
 MOUSE_ZOOM_OUT_SPEED = 0.5
 
+# Don't have to hold the mouse perfectly still for "clicks" (vs dragging)
+DRAGGING_DISTANCE_THRESHOLD = 5
 
 rotation = -45*(pi/180.)
 elevation = -66*(pi/180.)
@@ -51,6 +53,9 @@ objectsList = []
 selectedObjects = []
 messageQueue = deque()
 
+# Tells if a click was "doing nothing" (click into empty space)
+idleClick = True
+
 
 tooltip_texts = {"AddStraightButton": "add a straight path piece",
                  "AppendStraightButton": "append a straight path piece to a selected path piece"}
@@ -60,6 +65,13 @@ class displayedObject(object):
   def __init__(self):
     self.surfaceObj = None
     self.rect = None
+    self.selected = False
+
+  def select(self):
+    self.selected = True
+
+  def deselect(self):
+    self.selected = False
 
   def render(self):
     return None
@@ -84,14 +96,19 @@ class clickRegisteringObject(displayedObject):
 class Button(clickRegisteringObject):
   def __init__(self, name="", buttonRect=pygame.Rect(0,0,0,0),
                buttonSurfaceObj=pygame.Surface((0,0)),
-               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+               buttonClickedSurfaceObj=pygame.Surface((0,0)),
+               buttonHighlightedSurfaceObj=pygame.Surface((0,0))):
     self.name = name
     self.surfaceObj = buttonSurfaceObj
     self.clickedSurfaceObj = buttonClickedSurfaceObj
+    self.highlightedSurfaceObj = buttonHighlightedSurfaceObj
     self.rect = buttonRect
     self.active = False
+    self.highlighted = False
 
   def clickAction(self):
+    global idleClick
+    idleClick = False
     return None
 
   def setRectangle(self, newRectangle):
@@ -103,9 +120,17 @@ class Button(clickRegisteringObject):
   def deactivate(self):
     self.active = False
 
+  def highlight(self):
+    self.highlighted = True
+
+  def dehighlight(self):
+    self.highlighted = False
+
   def draw(self, screen):
     if self.active:
       screen.blit(self.clickedSurfaceObj, self.rect)
+    elif self.highlighted:
+      screen.blit(self.highlightedSurfaceObj, self.rect)
     else:
       screen.blit(self.surfaceObj, self.rect)
 
@@ -125,12 +150,18 @@ class AddStraightButton(Button):
                buttonClickedSurfaceObj=pygame.Surface((0,0))):
     img = pygame.image.load('{}/img/addstraight.png'.format(SCRIPT_PATH))
     clickedImg = pygame.image.load('{}/img/addstraightClicked.png'.format(SCRIPT_PATH))
-    super(AddStraightButton, self).__init__(name, buttonRect, img, clickedImg)
+    highlightedImg = pygame.image.load('{}/img/addstraightHighlighted.png'.format(SCRIPT_PATH))
+    super(AddStraightButton, self).__init__(name,
+                                            buttonRect,
+                                            img,
+                                            clickedImg,
+                                            highlightedImg)
 
   def clickAction(self):
     global objectsList
     objectsList.append(Straight((-20,-20,-20),(20,50,20)))
     infoMessage("Straight object added.")
+    super(AddStraightButton, self).clickAction()
 
   def tooltip(self, screen, mousePos=None):
     if mousePos is None:
@@ -145,7 +176,12 @@ class AppendStraightButton(Button):
                buttonClickedSurfaceObj=pygame.Surface((0,0))):
     img = pygame.image.load('{}/img/appendstraight.png'.format(SCRIPT_PATH))
     clickedImg = pygame.image.load('{}/img/appendstraightClicked.png'.format(SCRIPT_PATH))
-    super(AppendStraightButton, self).__init__(name, buttonRect, img, clickedImg)
+    highlightedImg = pygame.image.load('{}/img/appendstraightHighlighted.png'.format(SCRIPT_PATH))
+    super(AppendStraightButton, self).__init__(name,
+                                               buttonRect,
+                                               img,
+                                               clickedImg,
+                                               highlightedImg)
 
   def clickAction(self):
     if not selectedObjects:
@@ -154,6 +190,7 @@ class AppendStraightButton(Button):
       infoMessage("must select a single path piece to append (%d selected)" % len(selectedObjects))
     else:
       infoMessage("I am not doing anything =(")
+    super(AppendStraightButton, self).clickAction()
 
   def tooltip(self, screen, mousePos=None):
     if mousePos is None:
@@ -163,6 +200,7 @@ class AppendStraightButton(Button):
 
 class Straight(clickRegisteringObject):
   def __init__(self, startPoint3D=(0,0,0), endPoint3D=(0,0,0)):
+    super(Straight, self).__init__()
     self.startPoint = startPoint3D
     self.endPoint = endPoint3D
     self.render()
@@ -314,27 +352,77 @@ def infoMessage(msg):
 def deselectObjects(obj=None):
   global selectedObjects
   if obj is None:
+    for o in selectedObjects:
+      o.deselect()
     selectedObjects = []
   else:
     if isinstance(obj, list):
       for newObject in obj:
         if newObject in selectedObjects:
           selectedObjects.remove(newObject)
+          newObject.deselect()
+          infoMessage("Object deselected.")
     elif obj in selectedObjects:
-        selectedObjects.remove(obj)
+      selectedObjects.remove(obj)
+      obj.deselect()
+      infoMessage("Object deselected.")
 
 
 
 def selectObjects(obj=None):
-  global selectedObjects
+  global selectedObjects, idleClick
+  idleClick = False
   if obj is not None:
     if isinstance(obj, list):
       for newObject in obj:
         if newObject not in selectedObjects:
           selectedObjects.append(newObject)
+          newObject.select()
     elif obj not in selectedObjects:
-        selectedObjects.append(obj)
+      selectedObjects.append(obj)
+      obj.select()
 
+
+def discardDeprecatedSelections(rect):
+  global selectedObjects
+  for o in selectedObjects:
+    if not o.inRect(rect):
+      deselectObjects(o)
+
+
+
+def drawHelpDebugInfoMessages(screen, cursor_position, cursorPixelPos):
+  """draw helpful texts and print the info message queue"""
+    # render info text at (and about) cursor position (3D -> pixels)
+  text = '(%.1f, %.1f, %.1f) -> (%d, %d)'%(cursor_position[0], cursor_position[1], cursor_position[2],
+                                           cursorPixelPos[0], cursorPixelPos[1])
+  textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
+  textRect = textObj.get_rect()
+  textRect.topleft = (cursorPixelPos[0]+10, cursorPixelPos[1])
+  screen.blit(textObj, textRect)
+  # render info text about rotation and elevation angles
+  lines = ["Rotation angle = %.2f RAD (ca. %d DEG)" % (rotation, rotation*180./pi),
+           "Elevation angle = %.2f RAD (ca. %d DEG)" % (elevation, elevation*180./pi),
+           "Zoom factor = %.2f" % zoom]
+  for i in range(3):
+    textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
+    textRect = textObj.get_rect()
+    textRect.topleft = (0, i*15)
+    screen.blit(textObj, textRect)
+  lines = ["Use WASD or MIDDLE MOUSE BUTTON to rotate the camera (isometric projection, camera is at window center).",
+           "Move the cursor with the ARROW KEYS and PAGE-UP/DOWN.",
+           "Zoom in and out using the + (plus) and - (minus) keys or RIGHT MOUSE BUTTON.",
+           "Press HOME to reset the camera."]
+  for i in range(4):
+    textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
+    textRect = textObj.get_rect()
+    textRect.topleft = (0, WINDOW_SIZE[1]-(i+1)*15)
+    screen.blit(textObj, textRect)
+  for i, m in enumerate(messageQueue):
+    textObj = pygame.font.SysFont(None, 18).render(messageQueue[i], True, (0, 0, 0))
+    textRect = textObj.get_rect()
+    textRect.topright = (WINDOW_SIZE[0]-5, WINDOW_SIZE[1]-(i+1)*15)
+    screen.blit(textObj, textRect)
 
 
 def markObject(obj, screen):
@@ -365,6 +453,8 @@ def markObject(obj, screen):
 
 
 def main():
+  global idleClick
+
   logging.basicConfig(level=logging.DEBUG,
                       format='%(asctime)s %(levelname)s: %(message)s',
                       stream=sys.stdout)
@@ -381,10 +471,10 @@ def main():
 
   # create clock object used to limit the framerate
   clock = pygame.time.Clock()
-  # repeat keypresses as long as the are held down (resend events)
+  # repeat keypresses as long as the are held down (=resending events?)
   pygame.key.set_repeat(1, 30)
 
-  # render the initial background
+  # render the initial background ("floor" grid)
   BGSurfaceObj = render_background(screen)
 
   # create a small cursor
@@ -392,61 +482,97 @@ def main():
   CursorSurfaceObj = pygame.Surface((1, 1))
   CursorSurfaceObj.fill((0, 0, 0))
 
+  # create GUI buttons
   objectsList.extend(makeButtons())
   boxSelectionInProgress = False
   boxStartPoint = (0, 0)
+
+  # How far the mouse has travelled with a button down, used to distinguish
+  # between "click" and "drag" actions
+  dragManhattanDistance = 0
+  # Mouse status saved from previous timetick
+  lmbLastTick = mmbLastTick = rmbLastTick = False
 
 
   # MAIN LOOP
   running = True
   while running:
-    # limit to 30 fps
+    # Limit to 30 fps
     clock.tick(30)
 
-    # pygame.mouse.get_pressed() only works after retrieving events
+    # pygame.mouse.get_pressed() only works after depleting the event queue
     thisTickEvents = pygame.event.get()
 
-    # check mouse keys (not events)
-    leftButton, middleButton, rightButton = pygame.mouse.get_pressed()
+    # Check current status of mouse buttons (not events)
+    lmbDown, mmbDown, rmbDown = pygame.mouse.get_pressed()
 
-    # relative mouse movement since the last tick
+    # Get relative mouse movement since the last timetick
     mouseRelX, mouseRelY = pygame.mouse.get_rel()
 
-    # get all events
+    # Update dragManhattanDistance if the button status has not changed
+    if (lmbDown and lmbLastTick) or \
+       (mmbDown and mmbLastTick) or \
+       (rmbDown and rmbLastTick):
+      dragManhattanDistance += abs(mouseRelX)+abs(mouseRelY)
+    elif lmbDown or mmbDown or rmbDown:
+      dragManhattanDistance = 0
+
+    if lmbDown and dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD and \
+      not boxSelectionInProgress:
+      deselectObjects()
+      boxSelectionInProgress = True
+      boxStartPoint = pygame.mouse.get_pos()
+
+    if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
+      idleClick = False
+
+    # Process event queue
     for event in thisTickEvents:
-      # quit game if quit event is registered
+      # Quit game
       if event.type == pygame.QUIT:
         running = False
+      # Quit game with ESC key
       elif event.type == pygame.KEYDOWN:
         if event.key == pygame.K_ESCAPE:
           logging.debug("Quitting (ESC key)")
           running = False
-      elif event.type == pygame.MOUSEBUTTONDOWN and leftButton:
-        buttonWasClicked = False
-        for o in objectsList:
-          if isinstance(o, Button) and o.cursorOnObject():
-            buttonWasClicked = True
-            o.activate()
-            o.clickAction()
-        if not buttonWasClicked:
-          deselectObjects()
-          boxSelectionInProgress = True
-          boxStartPoint = pygame.mouse.get_pos()
+      # A mouse button was clicked
+      elif event.type == pygame.MOUSEBUTTONDOWN:
+        idleClick = True
+        # LMB click activates GUI elements, selects objects
+        if lmbDown:
+          GUIwasClicked = False
+          for o in objectsList:
+            if isinstance(o, Button) and o.cursorOnObject():
+              GUIwasClicked = True
+              o.activate()
+              o.clickAction()
+          # if not GUIwasClicked:
+            # deselectObjects()
+            # boxSelectionInProgress = True
+            # boxStartPoint = pygame.mouse.get_pos()
+      # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
-        boxSelectionInProgress = False
-        for o in objectsList:
-          if o.cursorOnObject():
-            if isinstance(o, Button):
-              pass
-              # o.activate()
-              # o.clickAction()
-            else:
+        # Only "click"-select objects (box selection is done later)
+        if not boxSelectionInProgress:
+          for o in objectsList:
+            if o.cursorOnObject() and not isinstance(o, Button):
               selectObjects(o)
               infoMessage("Object selected (via Click).")
+            elif isinstance(o, Button):
+              o.deactivate()
+        if idleClick:
+          infoMessage("Idle click, deselecting...")
+          deselectObjects()
+        # Reset drag distance
+        dragManhattanDistance = 0
+        boxSelectionInProgress = False
 
+    # Check current status of keyboard keys
     pressed_keys = pygame.key.get_pressed()
     rerender = False
-    # move cursor
+
+    # Move cursor
     if pressed_keys[pygame.K_UP]:
       cursor_position[1] += 10
     if pressed_keys[pygame.K_DOWN]:
@@ -460,7 +586,7 @@ def main():
     if pressed_keys[pygame.K_PAGEDOWN]:
       cursor_position[2] -= 10
 
-    # change camera settings using keyboard
+    # Change camera settings using keyboard
     if pressed_keys[pygame.K_a]:
       compute_projection_parameters(rotation-ROTATION_ANGULAR_SPEED, elevation, zoom)
       rerender = True
@@ -483,36 +609,35 @@ def main():
       compute_projection_parameters(rotation, elevation, zoom*ZOOM_IN_SPEED)
       rerender = True
 
-    # change camera settings using mouse
-    if middleButton:
-      if mouseRelX != 0:
-        compute_projection_parameters(rotation-ROTATION_ANGULAR_SPEED*
-                                               mouseRelX*
-                                               MOUSE_ROTATION_ANGULAR_SPEED,
-                                      elevation, zoom)
-        rerender = True
-      if mouseRelY != 0:
-        compute_projection_parameters(rotation,
-                                      elevation+ELEVATION_ANGULAR_SPEED*
-                                                mouseRelY*
-                                                MOUSE_ELEVATION_ANGULAR_SPEED,
-                                      zoom)
-        rerender = True
-    if rightButton:
-      if mouseRelY < 0:
-        compute_projection_parameters(rotation,
-                                      elevation,
-                                      zoom*ZOOM_IN_SPEED**
-                                        (-mouseRelY*MOUSE_ZOOM_IN_SPEED))
-        rerender = True
-      if mouseRelY > 0:
-        compute_projection_parameters(rotation,
-                                      elevation,
-                                      zoom*ZOOM_OUT_SPEED**
-                                        (mouseRelY*MOUSE_ZOOM_OUT_SPEED))
-        rerender = True
+    ## Change camera settings using mouse
+    # Rotation and Elevation angles
+    if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
+      if mmbDown:
+        if mouseRelX != 0 or mouseRelY != 0:
+          compute_projection_parameters(rotation-ROTATION_ANGULAR_SPEED*
+                                                 mouseRelX*
+                                                 MOUSE_ROTATION_ANGULAR_SPEED,
+                                        elevation+ELEVATION_ANGULAR_SPEED*
+                                                  mouseRelY*
+                                                  MOUSE_ELEVATION_ANGULAR_SPEED,
+                                        zoom)
+          rerender = True
+      # Zoom factor
+      if rmbDown:
+        if mouseRelY < 0:
+          compute_projection_parameters(rotation,
+                                        elevation,
+                                        zoom*ZOOM_IN_SPEED**
+                                          (-mouseRelY*MOUSE_ZOOM_IN_SPEED))
+          rerender = True
+        if mouseRelY > 0:
+          compute_projection_parameters(rotation,
+                                        elevation,
+                                        zoom*ZOOM_OUT_SPEED**
+                                          (mouseRelY*MOUSE_ZOOM_OUT_SPEED))
+          rerender = True
 
-
+    # If the camera has changed, the background graphic has to be re-rendered
     if rerender:
       BGSurfaceObj = render_background(screen)
       for o in objectsList:
@@ -520,51 +645,23 @@ def main():
     render = False
 
 
-    # render cursor
+    # Draw cursor
     screen.blit(BGSurfaceObj, (0, 0))
-    test_pixelpos = pixelpos(cursor_position, ORIGIN)
-    screen.blit(CursorSurfaceObj, test_pixelpos)
+    cursorPixelPos = pixelpos(cursor_position, ORIGIN)
+    screen.blit(CursorSurfaceObj, cursorPixelPos)
 
-    # render info text at (and about) cursor position (3D -> pixels)
-    text = '(%.1f, %.1f, %.1f) -> (%d, %d)'%(cursor_position[0], cursor_position[1], cursor_position[2],
-                                             test_pixelpos[0], test_pixelpos[1])
-    textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (test_pixelpos[0]+10, test_pixelpos[1])
-    screen.blit(textObj, textRect)
+    # Print helpful information:
+    drawHelpDebugInfoMessages(screen, cursor_position, cursorPixelPos)
 
-    # render info text about rotation and elevation angles
-    lines = ["Rotation angle = %.2f RAD (ca. %d DEG)" % (rotation, rotation*180./pi),
-             "Elevation angle = %.2f RAD (ca. %d DEG)" % (elevation, elevation*180./pi),
-             "Zoom factor = %.2f" % zoom]
-    for i in range(3):
-      textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
-      textRect = textObj.get_rect()
-      textRect.topleft = (0, i*15)
-      screen.blit(textObj, textRect)
-    lines = ["Use WASD or MIDDLE MOUSE BUTTON to rotate the camera (isometric projection, camera is at window center).",
-             "Move the cursor with the ARROW KEYS and PAGE-UP/DOWN.",
-             "Zoom in and out using the + (plus) and - (minus) keys or RIGHT MOUSE BUTTON.",
-             "Press HOME to reset the camera."]
-    for i in range(4):
-      textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
-      textRect = textObj.get_rect()
-      textRect.topleft = (0, WINDOW_SIZE[1]-(i+1)*15)
-      screen.blit(textObj, textRect)
-    for i, m in enumerate(messageQueue):
-      textObj = pygame.font.SysFont(None, 18).render(messageQueue[i], True, (0, 0, 0))
-      textRect = textObj.get_rect()
-      textRect.topright = (WINDOW_SIZE[0]-5, WINDOW_SIZE[1]-(i+1)*15)
-      screen.blit(textObj, textRect)
-
-    # draw lines to visualize the cursor's position in 3D space
+    # Draw lines to visualize the cursor's position in 3D space
+    # TODO we don't need a cursor, use this to mark a single selected object?
     drawHelpLines(cursor_position, screen)
 
-    # draw objects
+    # Draw objects
     for o in objectsList:
       o.draw(screen)
 
-    # draw selection box and select objects within
+    # Draw the selection box and select objects whose centers are within the box
     if boxSelectionInProgress:
       boxEndPoint = pygame.mouse.get_pos()
       minx = min(boxStartPoint[0], boxEndPoint[0])
@@ -580,29 +677,42 @@ def main():
       selectionBoxRect.center = (.5*(boxStartPoint[0]+boxEndPoint[0]),
                                  .5*(boxStartPoint[1]+boxEndPoint[1]))
       screen.blit(selectionBox, selectionBoxRect)
-      deselectObjects()
+      # deselectObjects()
+      discardDeprecatedSelections(selectionBoxRect)
       for obj in objectsList:
-        if obj.inRect(selectionBoxRect):
+        if obj.inRect(selectionBoxRect) and not isinstance(obj, Button):
+          if not obj.selected:
+            infoMessage("Object selected (via Box).")
           selectObjects(obj)
-          infoMessage("Object selected (via Box).")
 
-    # mark selected objects:
+    # Visualize selected objects with a box
     for o in selectedObjects:
       markObject(o, screen)
 
-    # draw GUI
+    # Draw GUI buttons
     for o in objectsList:
       if isinstance(o, Button):
-        o.draw(screen)
-        o.deactivate()
-    # draw GUI tooltips
+        if o.cursorOnObject() and not boxSelectionInProgress:
+          o.highlight()
+          o.draw(screen)
+          o.dehighlight()
+        else:
+          o.draw(screen)
+
+    # Draw GUI tooltips (after drawing all buttons so tooltips are always on top
     for o in objectsList:
-      if isinstance(o, Button) and o.cursorOnObject():
+      if isinstance(o, Button) and o.cursorOnObject() and not boxSelectionInProgress:
         o.tooltip(screen)
 
-    # actually draw the stuff to screen
+    # Actually draw the stuff to screen
     pygame.display.flip()
 
+    # Save mouse status for next tick
+    lmbLastTick, mmbLastTick, rmbLastTick = lmbDown, mmbDown, rmbDown
+
+
+  # Main loop has been exited; game is ending
+  logging.info("Goodbye!")
 
 
 if __name__ == '__main__':
