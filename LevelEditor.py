@@ -24,7 +24,6 @@
 ########################################################################
 
 import pygame
-import pygame.gfxdraw  # aaellipse
 from math import pi, sin, cos
 import logging, sys, os
 from collections import deque
@@ -478,10 +477,7 @@ def makeGUIButtons():
 
   global objectsList
   objectsList.extend(buttons)
-
   getObjectByName("appendStraightButton").disable()
-
-  return buttons
 
 
 
@@ -645,6 +641,9 @@ def main():
   # Print info and debugging text?
   printDebug = False
 
+  # Occasionally render HelixArcs in high quality
+  framesWithoutRerendering = 0
+
   ### DEBUG
   objectsList.append(HelixArc())
 
@@ -706,9 +705,10 @@ def main():
               o.clickAction()
       # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
+        if lmbLastTick and not boxSelectionInProgress:
+          deselectObjects()
         # Only "click"-select objects (box selection is done later)
         if not boxSelectionInProgress:
-          deselectObjects()
           for o in objectsList:
             if o.cursorOnObject() and not isinstance(o, Button):
               selectObjects(o)
@@ -804,10 +804,19 @@ def main():
 
     # If the camera has changed, the background graphic has to be re-rendered
     if rerender:
+      framesWithoutRerendering = 0
       BGSurfaceObj = render_background(screen)
       for o in objectsList:
         o.render()
-    render = False
+    else:
+      framesWithoutRerendering += 1
+
+    # Render HelixArcs in good quality if the scene is stationary
+    if framesWithoutRerendering == 3:
+      infoMessage("Rendering HelixArcs in HD...")
+      for o in objectsList:
+        if isinstance(o, HelixArc):
+          o.render(True)
 
 
     # Draw cursor
@@ -864,6 +873,7 @@ def main():
     # Update buttons
     # TODO refactor into Button method?
     if not selectedObjects or \
+       len(selectedObjects) != 1 or \
        len([o for o in selectedObjects if isinstance(o, Straight)]) != 1:
       getObjectByName('appendStraightButton').disable()
     else:
