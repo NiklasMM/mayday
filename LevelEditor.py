@@ -390,7 +390,7 @@ def compute_projection_parameters(newrotation, newelevation, newzoom):
   right = [cos(rotation), sin(rotation) * cos(elevation)]
   front = [sin(rotation), -cos(rotation) * cos(elevation)]
   up = [0, sin(elevation)]
-  zoom = newzoom
+  zoom = min(10., max(0.1, newzoom))
 
 def pixelpos(c, ORIGIN):
   "computes the 2D pixel screen coordinate for a 3D coordinate"
