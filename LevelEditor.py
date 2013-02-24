@@ -6,13 +6,17 @@
 
 
 ########################################################################
-# TODO
+# TODO features
 # - mouse camera DONE
 # - clickable game objects / how precise? DONE
 # - z-ordering (treap?)
 # - adding DONE / moving objects
 # - autojoining objects at ends to form a path
 # - context menu
+#
+# TODO else
+# - render button tooltips once (currently: every frame, and fonts eat CPU)
+# - comment, comment, comment, document, document, document!
 #
 # ONLY IN GAME
 # - wind (+ graphic effects?)
@@ -163,8 +167,8 @@ class Button(clickRegisteringObject):
     else:
       screen.blit(self.surfaceObj, self.rect)
 
-  def tooltip(self, screen, mousePos=None, text="<<<self.tooltip.text>>>"):
-    """check cursorOnObject before calling!"""
+  def tooltip(self, screen, mousePos=None, text="<<<Button.tooltip().text>>>"):
+    """Check cursorOnObject before calling!"""
     if mousePos is None:
       mousePos = pygame.mouse.get_pos()
     tmpTooltipTextObj = pygame.font.SysFont(None, 20).render(text, True, (0, 0, 0), (255, 255, 255))
@@ -187,6 +191,7 @@ class AddStraightButton(Button):
                                             highlightedImg)
 
   def clickAction(self):
+    # Check if the button is enabled
     try:
       super(AddStraightButton, self).clickAction()
     except:
@@ -216,6 +221,7 @@ class AppendStraightButton(Button):
                                                highlightedImg)
 
   def clickAction(self):
+    # Check if the button is enabled
     try:
       super(AppendStraightButton, self).clickAction()
     except:
@@ -291,13 +297,13 @@ class HelixArc(clickRegisteringObject):
     self.points3d = []
     self.points3dHD = []
     step = 0
-    while angle < endAngle:
+    while step < steps:
       a = angle if rightHanded else (360.-angle)
       x = cos(a*(pi/180.))*radius + centerpoint[0]
       y = sin(a*(pi/180.))*radius + centerpoint[1]
       z = height + centerpoint[2]
       self.points3dHD.append((x,y,z))
-      if step % 10 == 0:
+      if step % 10 == 0 or step == 999:
         self.points3d.append((x,y,z))
       angle += stepsize
       height += heightstep
