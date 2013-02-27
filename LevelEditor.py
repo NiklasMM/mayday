@@ -16,6 +16,7 @@
 # - undo/redo
 #
 # TODO fixes
+# - HelixArc drawing is still wrong
 # - observation:   boxselection + mmb/rmb -> boxselection and camera change
 #                  at the same time, releasing one cancels boxselection
 #   problem:       this isn't user-expected behavior
@@ -29,7 +30,8 @@
 #   solution idea: 1. copy rendered object sprite (+ padding!)
 #                  2. perform Euclidean Distance Transform on copy
 #                  3. "clicked" iff (EDT image at click position < threshold)
-# - render button tooltips once (currently: every frame, and fonts eat CPU)
+# - render font objects only once (currently: every frame, and fonts eat CPU)
+#   applicable pbjects include: debug texts, button tooltips, "toggle" text
 # - comment, comment, comment, document, document, document!
 #
 # ONLY IN GAME
@@ -46,7 +48,7 @@ from math import pi, sin, cos
 import logging, sys, os
 from collections import deque
 
-SCRIPT_PATH = os.path.dirname(__file__)
+SCRIPT_PATH = "/opt/mayday"#os.path.dirname(__file__)
 
 WINDOW_SIZE = (800, 600)
 ORIGIN = (WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2)
@@ -103,7 +105,7 @@ class DisplayedObject(object):
     self.selected = False
 
   def moveTo(self, newPos):
-    self.center = newPos
+    self.center = newPos[:]
 
   def moveByPixelOffset(self, relativePixelMotion):
     z = self.center[2]
@@ -111,7 +113,6 @@ class DisplayedObject(object):
     ppos[0] += relativePixelMotion[0]
     ppos[1] += relativePixelMotion[1]
     self.moveTo(unprojectPixelTo3dPosition(ppos, ORIGIN, z))
-
 
   def render(self):
     return None
@@ -322,9 +323,10 @@ class HelixArc(ClickRegisteringObject):
                radius=50., center=[0,0,0],
                rightHanded=True, color=(0,0,255)):
     super(HelixArc, self).__init__()
-    self.center = center
+    self.center = center[:]
+    self.centershift = [0,0]
     self.color = color
-    steps = 1000
+    steps = endAngle - startAngle
     heightstep = (endHeight-startHeight)/steps
     stepsize = (endAngle-startAngle)/steps
     height, angle = startHeight, startAngle
@@ -359,7 +361,7 @@ class HelixArc(ClickRegisteringObject):
       miny=min(miny,py)
       maxx=max(maxx,px)
       maxy=max(maxy,py)
-    centershift = (maxx+minx)/2,(maxy+miny)/2
+    self.centershift = [(maxx+minx)/2,(maxy+miny)/2]
     sf = pygame.Surface((maxx-minx+4,maxy-miny+4))
     sf = sf.convert_alpha()
     sf.fill((0,0,0,0))
@@ -400,9 +402,19 @@ class HelixArc(ClickRegisteringObject):
         sf.set_at((int(xint)+1-int(minx)+2,int(yint)+1-int(miny)+2),c)
 
     r = sf.get_rect()
-    r.center=(ORIGIN[0]+centershift[0], ORIGIN[1]+centershift[1])
+    r.center = [ORIGIN[0]+self.centershift[0], ORIGIN[1]+self.centershift[1]]
     self.surfaceObj = sf
     self.rect = r
+
+  def draw(self, screen):
+    """
+    The HelixArc needs special treatment, as its boundingbox depends heavily
+    on the viewing direction.
+    """
+    ppos = project3dToPixelPosition(self.center)
+    self.rect.center = [ppos[0]+self.centershift[0],
+                        ppos[1]+self.centershift[1]]
+    screen.blit(self.surfaceObj, self.rect)
 
 
 #_______________________________________________________________________
@@ -490,8 +502,8 @@ def drawHelpLines(pos3D, screen):
                                    2*max([abs(max_y-start[1]),
                                           abs(min_y-start[1])])+5))
   tempSurfaceObj = tempSurfaceObj.convert_alpha()
-  tempSurfaceObjCenter = (tempSurfaceObj.get_size()[0]//2,
-                          tempSurfaceObj.get_size()[1]//2)
+  tempSurfaceObjCenter = [tempSurfaceObj.get_size()[0]//2,
+                          tempSurfaceObj.get_size()[1]//2]
   line_anchors = [tempSurfaceObjCenter]
   # Draw a path from the origin along the 3 dimensions
   for i in range(3):
