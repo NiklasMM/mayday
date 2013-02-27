@@ -14,6 +14,13 @@
 # - autojoining objects at ends to form a path
 # - context menu
 #
+# TODO fixes
+# - observation:   boxselection + mmb/rmb -> boxselection and camera change
+#                  at the same time, releasing one cancels boxselection
+#   problem:       this isn't user-expected behavior
+#   solution idea: while lmb dragging, ignore mmb and rmb; likewise, while
+#                  mmb or rmb dragging, ignore lmb (but not mmb or rmb)
+#
 # TODO else
 # - render button tooltips once (currently: every frame, and fonts eat CPU)
 # - comment, comment, comment, document, document, document!
@@ -36,11 +43,11 @@ SCRIPT_PATH = os.path.dirname(__file__)
 
 WINDOW_SIZE = (800, 600)
 ORIGIN = (WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2)
-ROTATION_ANGULAR_SPEED = 0.05
+azimuth_ANGULAR_SPEED = 0.05
 ELEVATION_ANGULAR_SPEED = 0.05
 ZOOM_IN_SPEED = 1.05
 ZOOM_OUT_SPEED = 0.95
-MOUSE_ROTATION_ANGULAR_SPEED = 0.1
+MOUSE_azimuth_ANGULAR_SPEED = 0.1
 MOUSE_ELEVATION_ANGULAR_SPEED = 0.1
 MOUSE_ZOOM_IN_SPEED = 0.1
 MOUSE_ZOOM_OUT_SPEED = 0.1
@@ -48,10 +55,10 @@ MOUSE_ZOOM_OUT_SPEED = 0.1
 # Don't have to hold the mouse perfectly still for "clicks" (vs dragging)
 DRAGGING_DISTANCE_THRESHOLD = 5
 
-rotation = -45.*(pi/180.)
+azimuth = 315.*(pi/180.)
 elevation = -66.*(pi/180.)
-right = [cos(rotation), sin(rotation) * cos(elevation)]
-front = [sin(rotation), -cos(rotation) * cos(elevation)]
+right = [cos(azimuth), sin(azimuth) * cos(elevation)]
+front = [sin(azimuth), -cos(azimuth) * cos(elevation)]
 up = [0, sin(elevation)]
 zoom = 1.
 
@@ -250,15 +257,15 @@ class Straight(clickRegisteringObject):
 
   def render(self):
     """call after viewing direction or zoom change to rerender object"""
-    positions = (pixelpos(self.startPoint, ORIGIN),
-                 pixelpos(self.endPoint, ORIGIN))
+    positions = (project3dToPixelPosition(self.startPoint, ORIGIN),
+                 project3dToPixelPosition(self.endPoint, ORIGIN))
     min_x = int(min([p[0] for p in positions]))
     max_x = int(max([p[0] for p in positions]))
     min_y = int(min([p[1] for p in positions]))
     max_y = int(max([p[1] for p in positions]))
     start = positions[0]
     end = positions[1]
-    linecenter = pixelpos(((self.endPoint[0]+self.startPoint[0])/2,
+    linecenter = project3dToPixelPosition(((self.endPoint[0]+self.startPoint[0])/2,
                            (self.endPoint[1]+self.startPoint[1])/2,
                            (self.endPoint[2]+self.startPoint[2])/2), ORIGIN)
     # safely overestimate the needed area (pad to avoid clipping lines)
@@ -319,7 +326,7 @@ class HelixArc(clickRegisteringObject):
     points = self.points3dHD if highdefinition else self.points3d
     pixels = []
     for p in points:
-      px, py = pixelpos(p, (0,0))
+      px, py = project3dToPixelPosition(p, (0,0))
       pixels.append((px,py))
       minx=min(minx,px)
       miny=min(miny,py)
@@ -386,44 +393,71 @@ def getObjectByName(name):
     return result[0]
 
 
-def compute_projection_parameters(newrotation, newelevation, newzoom):
+def compute_projection_parameters(newazimuth, newelevation, newzoom):
   "changes the camera perspective"
-  global rotation, elevation, right, front, up, zoom
-  rotation = newrotation
-  while rotation < 0.: rotation += 2*pi
-  while rotation > 2*pi: rotation -= 2*pi
+  global azimuth, elevation, right, front, up, zoom
+  azimuth = newazimuth
+  while azimuth < 0.: azimuth += 2*pi
+  while azimuth > 2*pi: azimuth -= 2*pi
   elevation = min(0., max(-pi, newelevation))
-  right = [cos(rotation), sin(rotation) * cos(elevation)]
-  front = [sin(rotation), -cos(rotation) * cos(elevation)]
+  right = [cos(azimuth), sin(azimuth) * cos(elevation)]
+  front = [sin(azimuth), -cos(azimuth) * cos(elevation)]
   up = [0, sin(elevation)]
   zoom = min(10., max(0.1, newzoom))
 
-def pixelpos(c, ORIGIN):
-  "computes the 2D pixel screen coordinate for a 3D coordinate"
-  # isometric projection
+
+def project3dToPixelPosition(c, origin=ORIGIN):
+  """Computes the 2D pixel screen coordinate for a 3D point"""
+  # Isometric projection
+  #          [ -right- ]T    [ | ]
+  # result = [ -front- ]  *  [ c ]
+  #          [ --up--- ]     [ | ]
   result = [c[0] * right[0] + c[1] * front[0] + c[2] * up[0],
             c[0] * right[1] + c[1] * front[1] + c[2] * up[1]]
   result[0] *= zoom
   result[1] *= zoom
-  # compensate for pixel shift (window center is world center)
-  result[0] += ORIGIN[0]
-  result[1] += ORIGIN[1]
+  # Compensate for pixel shift (window center is world center)
+  result[0] += origin[0]
+  result[1] += origin[1]
   return result
 
 
+def unprojectPixelTo3dPosition(p, origin=ORIGIN, height=0.):
+  """Computes the 3d coordinates for a 2d pixel position, given a (z-) height"""
+  # Yes, this is ugly, but the math is VERY simple: Just resolve the system
+  # used in project3dToPixelPosition() to compute the pixel, and the fact
+  # that the height (=z) is known.
+  #
+  # p[0] = (x*right[0] + y*front[0] + z*up[0])*zoom + origin[0]
+  # p[1] = (x*right[1] + y*front[1] + z*up[1])*zoom + origin[1]
+  #
+  # There are three variables (x,y,z), but only two equations. That is why the
+  # function parameter HEIGHT is necessary to get an overdetermined system.
+  # (The ORIGIN is assumed to be constant.)
+  y = ((p[1]-origin[1])/(zoom*front[1]) -                                \
+        height*up[1]/front[1] -                                          \
+       (right[1]/(right[0]*front[1]))*                                   \
+       ((p[0]-origin[0])/zoom - height*up[0])) /                         \
+      (1. - (front[0]*right[1])/(right[0]*front[1]))
+  x = ((p[0]-origin[0])/zoom - height*up[0] - y*front[0]) / right[0]
+  z = height
+  point3d = (x, y, z)
+  return point3d
+
+
 def drawHelpLines(pos3D, screen):
-  "draw 3D orientation help lines"
-  positions = (pixelpos((0, 0, 0), ORIGIN),
-               pixelpos((pos3D[0], 0, 0), ORIGIN),
-               pixelpos((pos3D[0], pos3D[1], 0), ORIGIN),
-               pixelpos(pos3D, ORIGIN))
+  """Draw 3D orientation help lines"""
+  positions = (project3dToPixelPosition((0, 0, 0)),
+               project3dToPixelPosition((pos3D[0], 0, 0)),
+               project3dToPixelPosition((pos3D[0], pos3D[1], 0)),
+               project3dToPixelPosition(pos3D))
   min_x = int(min([p[0] for p in positions]))
   max_x = int(max([p[0] for p in positions]))
   min_y = int(min([p[1] for p in positions]))
   max_y = int(max([p[1] for p in positions]))
   start = positions[0]
   end = positions[-1]
-  # safely overestimate the needed area (pad to avoid clipping lines)
+  # Safely overestimate the needed area (pad to avoid clipping lines)
   tempSurfaceObj = pygame.Surface((2*max([abs(max_x-start[0]),
                                           abs(min_x-start[0])])+5,
                                    2*max([abs(max_y-start[1]),
@@ -432,42 +466,42 @@ def drawHelpLines(pos3D, screen):
   tempSurfaceObjCenter = (tempSurfaceObj.get_size()[0]//2,
                           tempSurfaceObj.get_size()[1]//2)
   line_anchors = [tempSurfaceObjCenter]
-  # draw a path from the origin to the cursor along the 3 dimensions
+  # Draw a path from the origin to the cursor along the 3 dimensions
   for i in range(3):
     line_anchors.append((positions[i+1][0]-start[0]+tempSurfaceObjCenter[0],
                          positions[i+1][1]-start[1]+tempSurfaceObjCenter[1]))
     pygame.draw.aaline(tempSurfaceObj, (0,0,127),
                        line_anchors[i], line_anchors[i+1])
-  # repair the alpha values (transparency) at antialiasing border
+  # Repair the alpha values (transparency) at antialiasing border
   pixels = pygame.PixelArray(tempSurfaceObj)
   pixels.replace(pygame.Color(0, 0, 0, 255), pygame.Color(0, 0, 0, 0))
   del pixels
-  # draw
+  # Draw
   tempSurfaceObjRect = tempSurfaceObj.get_rect()
   tempSurfaceObjRect.center = ORIGIN
   screen.blit(tempSurfaceObj, tempSurfaceObjRect)
 
 
-def render_background(screen):
-  "rerender the 'ground' (z=0 plane) grid"
-  # create and fill background
+def render_background():
+  "Rerender the 'ground' (z=0 plane) grid"
+  # Create and fill background
   BGSurfaceObj = pygame.Surface(WINDOW_SIZE)
   BGSurfaceObj.fill((200,200,255))
-  # render grid lines
+  # Render grid lines
   for i in range(21):
     pygame.draw.aaline(BGSurfaceObj, (255,255,255),
-                       pixelpos(((i-10)*50,-500, 0), ORIGIN),
-                       pixelpos(((i-10)*50, 500, 0), ORIGIN))
+                       project3dToPixelPosition(((i-10)*50,-500, 0)),
+                       project3dToPixelPosition(((i-10)*50, 500, 0)))
     pygame.draw.aaline(BGSurfaceObj, (255,255,255),
-                       pixelpos((-500, (i-10)*50, 0), ORIGIN),
-                       pixelpos(( 500, (i-10)*50, 0), ORIGIN))
+                       project3dToPixelPosition((-500, (i-10)*50, 0)),
+                       project3dToPixelPosition(( 500, (i-10)*50, 0)))
   return BGSurfaceObj
 
 
 
 
 def makeGUIButtons():
-  """initialize GUI buttons, returns a list of BUTTONs"""
+  """Initialize GUI buttons"""
   buttons = []
   to_make = ((AddStraightButton, "addStraightButton",
                 (WINDOW_SIZE[0], 0)),
@@ -488,9 +522,9 @@ def makeGUIButtons():
 
 
 def infoMessage(msg):
-  """append a message to the queue and keep the queue at a max length"""
+  """Append a message to the queue and keep the queue at a max length"""
   messageQueue.append(msg)
-  if len(messageQueue) > 8:
+  while len(messageQueue) > 8:
     messageQueue.popleft()
 
 
@@ -537,17 +571,17 @@ def discardDeprecatedSelections(rect):
 
 
 
-def drawHelpDebugInfoMessages(screen, cursor_position, cursorPixelPos):
+def drawHelpDebugInfoMessages(screen, cursor_position, cursorproject3dToPixelPosition):
   """draw helpful texts and print the info message queue"""
     # render info text at (and about) cursor position (3D -> pixels)
   text = '(%.1f, %.1f, %.1f) -> (%d, %d)'%(cursor_position[0], cursor_position[1], cursor_position[2],
-                                           cursorPixelPos[0], cursorPixelPos[1])
+                                           cursorproject3dToPixelPosition[0], cursorproject3dToPixelPosition[1])
   textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
   textRect = textObj.get_rect()
-  textRect.topleft = (cursorPixelPos[0]+10, cursorPixelPos[1])
+  textRect.topleft = (cursorproject3dToPixelPosition[0]+10, cursorproject3dToPixelPosition[1])
   screen.blit(textObj, textRect)
-  # render info text about rotation and elevation angles
-  lines = ["Rotation angle = %.2f RAD (ca. %d DEG)" % (rotation, rotation*180./pi),
+  # render info text about azimuth and elevation angles
+  lines = ["azimuth angle = %.2f RAD (ca. %d DEG)" % (azimuth, azimuth*180./pi),
            "Elevation angle = %.2f RAD (ca. %d DEG)" % (elevation, elevation*180./pi),
            "Zoom factor = %.2f" % zoom]
   for i in range(3):
@@ -611,6 +645,11 @@ def main():
   pygame.init()
   screen = pygame.display.set_mode(WINDOW_SIZE)
 
+  # Set window icon
+  # Image credit: http://chidioparareports.blogspot.de/2012/06/special-report-nigerian-airlines-and.html
+  icon = pygame.image.load('{}/img/icon.png'.format(SCRIPT_PATH))
+  pygame.display.set_icon(icon)
+
   # set window title
   pygame.display.set_caption("Mayday Level Editor / Camera Demo")
 
@@ -623,7 +662,7 @@ def main():
   pygame.key.set_repeat(1, 30)
 
   # render the initial background ("floor" grid)
-  BGSurfaceObj = render_background(screen)
+  BGSurfaceObj = render_background()
 
   # create a small cursor
   cursor_position = [0, 0, 0]
@@ -643,6 +682,8 @@ def main():
   dragStartedOnGUI = False
   # Mouse status saved from previous timetick
   lmbLastTick = mmbLastTick = rmbLastTick = False
+  # Used for moving objects
+  dragStartedOnSelectedObject = False
 
   # Print info and debugging text?
   printDebug = False
@@ -679,7 +720,8 @@ def main():
     if lmbDown and \
        dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD and \
        not boxSelectionInProgress and \
-       not dragStartedOnGUI:
+       not dragStartedOnGUI and \
+       not dragStartedOnSelectedObject:
       deselectObjects()
       boxSelectionInProgress = True
       boxStartPoint = pygame.mouse.get_pos()
@@ -707,8 +749,15 @@ def main():
             if isinstance(o, Button) and o.cursorOnObject():
               GUIwasClicked = True
               dragStartedOnGUI = True
+              infoMessage("dragStartedOnGUI")
               o.activate()
               o.clickAction()
+          if not GUIwasClicked:
+            for so in selectedObjects:
+              if so.cursorOnObject():
+                dragStartedOnSelectedObject = True
+                infoMessage("dragStartedOnSelectedObject")
+              break
       # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
         if lmbLastTick and not boxSelectionInProgress:
@@ -733,6 +782,7 @@ def main():
         dragManhattanDistance = 0
         boxSelectionInProgress = False
         dragStartedOnGUI = False
+        dragStartedOnSelectedObject = False
 
     # Check current status of keyboard keys
     pressedKeys = pygame.key.get_pressed()
@@ -757,37 +807,37 @@ def main():
 
     # Change camera settings using keyboard
     if pressedKeys[pygame.K_a]:
-      compute_projection_parameters(rotation-ROTATION_ANGULAR_SPEED, elevation, zoom)
+      compute_projection_parameters(azimuth-azimuth_ANGULAR_SPEED, elevation, zoom)
       rerender = True
     if pressedKeys[pygame.K_d]:
-      compute_projection_parameters(rotation+ROTATION_ANGULAR_SPEED, elevation, zoom)
+      compute_projection_parameters(azimuth+azimuth_ANGULAR_SPEED, elevation, zoom)
       rerender = True
     if pressedKeys[pygame.K_w]:
-      compute_projection_parameters(rotation, elevation+ELEVATION_ANGULAR_SPEED, zoom)
+      compute_projection_parameters(azimuth, elevation+ELEVATION_ANGULAR_SPEED, zoom)
       rerender = True
     if pressedKeys[pygame.K_s]:
-      compute_projection_parameters(rotation, elevation-ELEVATION_ANGULAR_SPEED, zoom)
+      compute_projection_parameters(azimuth, elevation-ELEVATION_ANGULAR_SPEED, zoom)
       rerender = True
     if pressedKeys[pygame.K_HOME]:
-      compute_projection_parameters(-45*(pi/180.), -66*(pi/180.), 1.0)
+      compute_projection_parameters(315*(pi/180.), -66*(pi/180.), 1.0)
       rerender = True
     if pressedKeys[pygame.K_MINUS]:
-      compute_projection_parameters(rotation, elevation, zoom*ZOOM_OUT_SPEED)
+      compute_projection_parameters(azimuth, elevation, zoom*ZOOM_OUT_SPEED)
       rerender = True
     if pressedKeys[pygame.K_PLUS]:
-      compute_projection_parameters(rotation, elevation, zoom*ZOOM_IN_SPEED)
+      compute_projection_parameters(azimuth, elevation, zoom*ZOOM_IN_SPEED)
       rerender = True
 
     pressedKeysLastTick = pressedKeys
 
     ## Change camera settings using mouse
-    # Rotation and Elevation angles
+    # azimuth and Elevation angles
     if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
       if mmbDown:
         if mouseRelX != 0 or mouseRelY != 0:
-          compute_projection_parameters(rotation-ROTATION_ANGULAR_SPEED*
+          compute_projection_parameters(azimuth-azimuth_ANGULAR_SPEED*
                                                  mouseRelX*
-                                                 MOUSE_ROTATION_ANGULAR_SPEED,
+                                                 MOUSE_azimuth_ANGULAR_SPEED,
                                         elevation+ELEVATION_ANGULAR_SPEED*
                                                   mouseRelY*
                                                   MOUSE_ELEVATION_ANGULAR_SPEED,
@@ -796,22 +846,27 @@ def main():
       # Zoom factor
       if rmbDown:
         if mouseRelY < 0:
-          compute_projection_parameters(rotation,
+          compute_projection_parameters(azimuth,
                                         elevation,
                                         zoom*ZOOM_IN_SPEED**
                                           (-mouseRelY*MOUSE_ZOOM_IN_SPEED))
           rerender = True
         if mouseRelY > 0:
-          compute_projection_parameters(rotation,
+          compute_projection_parameters(azimuth,
                                         elevation,
                                         zoom*ZOOM_OUT_SPEED**
                                           (mouseRelY*MOUSE_ZOOM_OUT_SPEED))
           rerender = True
 
+    # Move objects per mouse
+    if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD and \
+       dragStartedOnSelectedObject:
+      infoMessage("wanna move")
+
     # If the camera has changed, the background graphic has to be re-rendered
     if rerender:
       framesWithoutRerendering = 0
-      BGSurfaceObj = render_background(screen)
+      BGSurfaceObj = render_background()
       for o in objectsList:
         o.render()
     else:
@@ -827,8 +882,8 @@ def main():
 
     # Draw cursor
     screen.blit(BGSurfaceObj, (0, 0))
-    cursorPixelPos = pixelpos(cursor_position, ORIGIN)
-    screen.blit(CursorSurfaceObj, cursorPixelPos)
+    cursorproject3dToPixelPosition = project3dToPixelPosition(cursor_position)
+    screen.blit(CursorSurfaceObj, cursorproject3dToPixelPosition)
 
     # Print helpful information and debugging messages (CPU intensive!)
     text = 'Press H to toggle debug information.'
@@ -837,7 +892,7 @@ def main():
     textRect.topleft = (0,0)
     screen.blit(textObj, textRect)
     if printDebug:
-      drawHelpDebugInfoMessages(screen, cursor_position, cursorPixelPos)
+      drawHelpDebugInfoMessages(screen, cursor_position, cursorproject3dToPixelPosition)
 
 
     # Draw lines to visualize the cursor's position in 3D space
