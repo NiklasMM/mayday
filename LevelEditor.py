@@ -31,6 +31,7 @@
 #   solution idea: 1. copy rendered object sprite (+ padding!)
 #                  2. perform Euclidean Distance Transform on copy
 #                  3. "clicked" iff (EDT image at click position < threshold)
+#   note: didn't use distance transforms.
 # - render font objects only once (currently: every frame, and fonts eat CPU)
 #   applicable pbjects include: debug texts, button tooltips, "toggle" text
 # - comment, comment, comment, document, document, document!
@@ -49,7 +50,7 @@ from math import pi, sin, cos
 import logging, sys, os
 from collections import deque
 
-SCRIPT_PATH = "/opt/mayday"#os.path.dirname(__file__)
+SCRIPT_PATH = os.path.dirname(__file__)
 
 WINDOW_SIZE = (800, 600)
 ORIGIN = (WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2)
@@ -75,7 +76,7 @@ up = [0, sin(elevation)]
 zoom = 1.
 
 # Objects register clicks even if the object was not hit with pixel precision.
-# Instead, all pixels within a sphere around the cursor are checked.
+# Instead, all pixels within a disk around the cursor are checked.
 # WARNING: Do not set this radius to 0!
 CLICK_TOLERANCE_RADIUS  = 5
 CLICK_TOLERANCE_OFFSETS = []
