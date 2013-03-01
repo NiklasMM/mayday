@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="210mm"
+   height="297mm"
+   id="svg2"
+   version="1.1"
+   inkscape:version="0.48.3.1 r9886"
+   sodipodi:docname="changeActiveEndButton.svg">
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="3.959798"
+     inkscape:cx="392.22025"
+     inkscape:cy="542.99703"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1007"
+     inkscape:window-x="0"
+     inkscape:window-y="24"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Ebene 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       style="fill:#e8e8fa;fill-opacity:1;stroke:#ff7fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1"
+       d="m 340.61868,494.75253 62.85715,0 0,62.85715 -62.85715,0 z"
+       id="rect2985"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:2;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:0.19607843;stroke-dasharray:none"
+       d="m 376.93123,502.88426 -29.58309,29.5831"
+       id="path3767-5-20"
+       inkscape:connector-curvature="0"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70.450096"
+       inkscape:export-ydpi="70.450096" />
+    <path
+       style="fill:none;stroke:#ffffff;stroke-width:2;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       d="m 376.97404,501.57709 -29.58309,29.5831"
+       id="path3767-5"
+       inkscape:connector-curvature="0"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70.450096"
+       inkscape:export-ydpi="70.450096" />
+    <path
+       sodipodi:type="arc"
+       style="fill:none;stroke:#ff0000;stroke-width:6.52576017;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:0.49838191;stroke-dasharray:none;stroke-dashoffset:0"
+       id="path3806"
+       sodipodi:cx="371.48361"
+       sodipodi:cy="525.82019"
+       sodipodi:rx="17.425131"
+       sodipodi:ry="17.425131"
+       d="m 388.90874,525.82019 a 17.425131,17.425131 0 1 1 -34.85026,0 17.425131,17.425131 0 1 1 34.85026,0 z"
+       transform="matrix(0.30647771,0,0,0.30647771,262.80165,340.76725)"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70" />
+    <path
+       style="font-size:medium;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:normal;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#ff7fff;fill-opacity:1;stroke:none;stroke-width:1;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Sans;-inkscape-font-specification:Sans"
+       d="m 340.53125,494.25 a 0.50005,0.50005 0 0 0 -0.40625,0.5 l 0,62.875 a 0.50005,0.50005 0 0 0 0.5,0.5 l 62.84375,0 a 0.50005,0.50005 0 0 0 0.5,-0.5 l 0,-62.875 a 0.50005,0.50005 0 0 0 -0.5,-0.5 l -62.84375,0 a 0.50005,0.50005 0 0 0 -0.0937,0 z m 0.59375,1 61.84375,0 0,61.875 -61.84375,0 0,-61.875 z"
+       id="rect2985-0"
+       inkscape:connector-curvature="0"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70" />
+    <path
+       sodipodi:type="arc"
+       style="fill:none;stroke:#ff0000;stroke-width:6.52576017;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:0.49803922;stroke-dasharray:none;stroke-dashoffset:0"
+       id="path3806-5"
+       sodipodi:cx="371.48361"
+       sodipodi:cy="525.82019"
+       sodipodi:rx="17.425131"
+       sodipodi:ry="17.425131"
+       d="m 388.90874,525.82019 a 17.425131,17.425131 0 1 1 -34.85026,0 17.425131,17.425131 0 1 1 34.85026,0 z"
+       transform="matrix(0.30647771,0,0,0.30647771,252.04776,389.15382)"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:2;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:0.19607843;stroke-dasharray:none"
+       d="m 395.42964,522.01403 -29.58309,29.5831"
+       id="path3767-5-20-5"
+       inkscape:connector-curvature="0"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70.450096"
+       inkscape:export-ydpi="70.450096" />
+    <path
+       style="fill:none;stroke:#ffffff;stroke-width:2;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       d="m 395.42289,520.87158 -29.58309,29.5831"
+       id="path3767-5-2"
+       inkscape:connector-curvature="0"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70.450096"
+       inkscape:export-ydpi="70.450096" />
+    <g
+       id="g3913"
+       transform="translate(-4.608821,7.1973369)"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70">
+      <path
+         inkscape:export-ydpi="70.450096"
+         inkscape:export-xdpi="70.450096"
+         inkscape:export-filename="/home/nikolaus/Arbeitsfläche/straight.png"
+         inkscape:connector-curvature="0"
+         id="path3767-5-5"
+         d="M 377.44781,532.66826 365.01432,520.23477"
+         style="fill:#ff7fff;fill-opacity:1;stroke:#ff7fff;stroke-width:3;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+      <path
+         transform="matrix(0.97198579,0,0,0.97198579,26.550758,19.845025)"
+         d="m 354.75293,515.97117 -5.4702,5.17853 -1.74964,-7.3266 z"
+         inkscape:randomized="0"
+         inkscape:rounded="0"
+         inkscape:flatsided="true"
+         sodipodi:arg2="0.8127819"
+         sodipodi:arg1="-0.23441561"
+         sodipodi:r2="8.2384138"
+         sodipodi:r1="4.3489571"
+         sodipodi:cy="516.98132"
+         sodipodi:cx="350.52292"
+         sodipodi:sides="3"
+         id="path3899"
+         style="fill:#ff7fff;fill-opacity:1;stroke:#ff7fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
+         sodipodi:type="star" />
+    </g>
+    <g
+       id="g3926"
+       transform="matrix(-1,0,0,-1,748.83872,1051.3878)"
+       inkscape:export-filename="/opt/mayday/img/changeActiveEndClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70">
+      <path
+         inkscape:export-ydpi="70.450096"
+         inkscape:export-xdpi="70.450096"
+         inkscape:export-filename="/home/nikolaus/Arbeitsfläche/straight.png"
+         inkscape:connector-curvature="0"
+         id="path3767-5-5-0"
+         d="M 378.26504,539.75687 365.83155,527.32338"
+         style="fill:#ff7fff;fill-opacity:1;stroke:#ff7fff;stroke-width:3;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+      <path
+         transform="matrix(0.97198579,0,0,0.97198579,27.367986,26.933637)"
+         d="m 354.75293,515.97117 -5.4702,5.17853 -1.74964,-7.3266 z"
+         inkscape:randomized="0"
+         inkscape:rounded="0"
+         inkscape:flatsided="true"
+         sodipodi:arg2="0.8127819"
+         sodipodi:arg1="-0.23441561"
+         sodipodi:r2="8.2384138"
+         sodipodi:r1="4.3489571"
+         sodipodi:cy="516.98132"
+         sodipodi:cx="350.52292"
+         sodipodi:sides="3"
+         id="path3899-6"
+         style="fill:#ff7fff;fill-opacity:1;stroke:#ff7fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
+         sodipodi:type="star" />
+    </g>
+  </g>
+</svg>
