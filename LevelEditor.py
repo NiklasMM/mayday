@@ -7,16 +7,17 @@
 
 ########################################################################
 # TODO features
-# - mouse camera DONE
-# - clickable game objects / how precise? DONE
+# - DONE mouse camera
+# - DONE clickable game objects / how precise?
 # - z-ordering (treap?)
-# - adding DONE / moving objects
+# - DONE adding / moving objects
 # - autojoining objects at ends to form a path
 # - context menu
 # - undo/redo
+# - while moving objects: hold CTRL to snap to grid
 #
 # TODO fixes
-# - HelixArc drawing is still wrong
+# - DONE HelixArc drawing is still wrong
 # - observation:   boxselection + mmb/rmb -> boxselection and camera change
 #                  at the same time, releasing one cancels boxselection
 #   problem:       this isn't user-expected behavior
@@ -24,7 +25,7 @@
 #                  mmb or rmb dragging, ignore lmb (but not mmb or rmb)
 #
 # TODO else
-# - observation:   clicking objects needs pixel-precision
+# - DONE observation:   clicking objects needs pixel-precision
 #   problem:       this isn't user-expected behavior, it's uncomfortable,
 #                  and impossible to do on touch devices
 #   solution idea: 1. copy rendered object sprite (+ padding!)
@@ -72,6 +73,16 @@ right = [cos(azimuth), sin(azimuth) * cos(elevation)]
 front = [sin(azimuth), -cos(azimuth) * cos(elevation)]
 up = [0, sin(elevation)]
 zoom = 1.
+
+# Objects register clicks even if the object was not hit with pixel precision.
+# Instead, all pixels within a sphere around the cursor are checked.
+# WARNING: Do not set this radius to 0!
+CLICK_TOLERANCE_RADIUS  = 5
+CLICK_TOLERANCE_OFFSETS = []
+for y in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
+  for x in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
+    if x**2+y**2 > CLICK_TOLERANCE_RADIUS**2+1:
+      CLICK_TOLERANCE_OFFSETS.append((x, y))
 
 # A list of all on-screen objects (including buttons!)
 objectsList = []
@@ -134,9 +145,18 @@ class ClickRegisteringObject(DisplayedObject):
   def cursorOnObject(self, mousePos=None):
     if mousePos is None:
       mousePos = pygame.mouse.get_pos()
-    return self.rect.collidepoint(mousePos) and \
-           self.surfaceObj.get_at((mousePos[0]-self.rect.topleft[0],
-                                   mousePos[1]-self.rect.topleft[1])) != (0, 0, 0, 0)
+    if not self.rect.collidepoint(mousePos):
+      return False
+    for x,y in CLICK_TOLERANCE_OFFSETS:
+      try:
+        if self.surfaceObj.get_at((mousePos[0]-self.rect.topleft[0]+x,
+                                   mousePos[1]-self.rect.topleft[1]+y)) != (0,0,0,0):
+          return True
+      except: pass
+    return False
+    # return self.rect.collidepoint(mousePos) and \
+           # self.surfaceObj.get_at((mousePos[0]-self.rect.topleft[0],
+                                   # mousePos[1]-self.rect.topleft[1])) != (0, 0, 0, 0)
 
   def inRect(self, rect):
     return rect.collidepoint(self.rect.center)
@@ -296,7 +316,8 @@ class Straight(ClickRegisteringObject):
                            (self.endPoint[1]+self.startPoint[1])/2,
                            (self.endPoint[2]+self.startPoint[2])/2), ORIGIN)
     # safely overestimate the needed area (pad to avoid clipping lines)
-    tempSurfaceObj = pygame.Surface((max_x-min_x+5, max_y-min_y+5))
+    tempSurfaceObj = pygame.Surface((max_x-min_x+CLICK_TOLERANCE_RADIUS,
+                                     max_y-min_y+CLICK_TOLERANCE_RADIUS))
     tempSurfaceObj = tempSurfaceObj.convert_alpha()
     tempSurfaceObjCenter = (tempSurfaceObj.get_size()[0]//2,
                             tempSurfaceObj.get_size()[1]//2)
@@ -361,8 +382,10 @@ class HelixArc(ClickRegisteringObject):
       miny=min(miny,py)
       maxx=max(maxx,px)
       maxy=max(maxy,py)
+    # Padding the image avoids clipping pixels
+    pad = CLICK_TOLERANCE_RADIUS
     self.centershift = [(maxx+minx)/2,(maxy+miny)/2]
-    sf = pygame.Surface((maxx-minx+4,maxy-miny+4))
+    sf = pygame.Surface((maxx-minx+2*pad,maxy-miny+2*pad))
     sf = sf.convert_alpha()
     sf.fill((0,0,0,0))
     sfsize=sf.get_size()
@@ -373,33 +396,33 @@ class HelixArc(ClickRegisteringObject):
       xint, xfrac = divmod(p[0], 1)
       yint, yfrac = divmod(p[1], 1)
 
-      if 0 <= int(xint)-int(minx)+2 < WINDOW_SIZE[0] and \
-         0 <= int(yint)-int(miny)+2 < WINDOW_SIZE[1]:
-        c = sf.get_at((int(xint)-int(minx)+2,int(yint)-int(miny)+2))
+      if 0 <= int(xint)-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)-int(minx)+pad,int(yint)-int(miny)+pad))
         c.r, c.g, c.b = self.color
         c.a=max(c.a,int(255*(1.-xfrac)*(1.-yfrac)))
-        sf.set_at((int(xint)-int(minx)+2,int(yint)-int(miny)+2),c)
+        sf.set_at((int(xint)-int(minx)+pad,int(yint)-int(miny)+pad),c)
 
-      if 0 <= int(xint)+1-int(minx)+2 < WINDOW_SIZE[0] and \
-         0 <= int(yint)-int(miny)+2 < WINDOW_SIZE[1]:
-        c = sf.get_at((int(xint)+1-int(minx)+2,int(yint)-int(miny)+2))
+      if 0 <= int(xint)+1-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)+1-int(minx)+pad,int(yint)-int(miny)+pad))
         c.r, c.g, c.b = self.color
         c.a=max(c.a,int(255*(xfrac)*(1.-yfrac)))
-        sf.set_at((int(xint)+1-int(minx)+2,int(yint)-int(miny)+2),c)
+        sf.set_at((int(xint)+1-int(minx)+pad,int(yint)-int(miny)+pad),c)
 
-      if 0 <= int(xint)-int(minx)+2 < WINDOW_SIZE[0] and \
-         0 <= int(yint)+1-int(miny)+2 < WINDOW_SIZE[1]:
-        c = sf.get_at((int(xint)-int(minx)+2,int(yint)+1-int(miny)+2))
+      if 0 <= int(xint)-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)+1-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)-int(minx)+pad,int(yint)+1-int(miny)+pad))
         c.r, c.g, c.b = self.color
         c.a=max(c.a,int(255*(1.-xfrac)*(yfrac)))
-        sf.set_at((int(xint)-int(minx)+2,int(yint)+1-int(miny)+2),c)
+        sf.set_at((int(xint)-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
 
-      if 0 <= int(xint)+1-int(minx)+2 < WINDOW_SIZE[0] and \
-         0 <= int(yint)+1-int(miny)+2 < WINDOW_SIZE[1]:
-        c = sf.get_at((int(xint)+1-int(minx)+2,int(yint)+1-int(miny)+2))
+      if 0 <= int(xint)+1-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)+1-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad))
         c.r, c.g, c.b = self.color
         c.a=max(c.a,int(255*(xfrac)*(yfrac)))
-        sf.set_at((int(xint)+1-int(minx)+2,int(yint)+1-int(miny)+2),c)
+        sf.set_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
 
     r = sf.get_rect()
     r.center = [ORIGIN[0]+self.centershift[0], ORIGIN[1]+self.centershift[1]]
@@ -421,19 +444,25 @@ class HelixArc(ClickRegisteringObject):
 
 
 def getObjectByName(name):
-  "identify objects having unique names"
+  "Identify objects having unique names"
   global objectsList
   result = [o for o in objectsList if o.name==name]
   if not result:
     raise IndexError('Objectslist contains no object named "%s"!' % name)
   elif len(result) > 1:
     raise IndexError('Objectslist contains multiple objects named "%s"!' % name)
-  else:
-    return result[0]
+  return result[0]
 
+def getObjectsByClass(cls):
+  "Identify objects by their class"
+  global objectsList
+  result = [o for o in objectsList if isinstance(o, cls)]
+  if not result:
+    raise IndexError('Objectslist contains no object of class "%s"!' % cls.__name__)
+  return result
 
 def compute_projection_parameters(newazimuth, newelevation, newzoom):
-  "changes the camera perspective"
+  "Changes the camera perspective"
   global azimuth, elevation, right, front, up, zoom
   azimuth = newazimuth
   while azimuth < 0.: azimuth += 2*pi
@@ -810,6 +839,7 @@ def main():
         elif event.button == 4:
           compute_projection_parameters(azimuth, elevation, zoom*ZOOM_IN_SPEED**2)
           rerender = True
+        # Button 5 is MOUSE WHEEL DOWN
         elif event.button == 5:
           compute_projection_parameters(azimuth, elevation, zoom*ZOOM_OUT_SPEED**2)
           rerender = True
