@@ -54,11 +54,11 @@ SCRIPT_PATH = os.path.dirname(__file__)
 
 WINDOW_SIZE = (800, 600)
 ORIGIN = (WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2)
-azimuth_ANGULAR_SPEED = 0.05
+AZIMUTH_ANGULAR_SPEED = 0.05
 ELEVATION_ANGULAR_SPEED = 0.05
 ZOOM_IN_SPEED = 1.05
 ZOOM_OUT_SPEED = 0.95
-MOUSE_azimuth_ANGULAR_SPEED = 0.1
+MOUSE_AZIMUTH_ANGULAR_SPEED = 0.1
 MOUSE_ELEVATION_ANGULAR_SPEED = 0.1
 MOUSE_ZOOM_IN_SPEED = 0.1
 MOUSE_ZOOM_OUT_SPEED = 0.1
@@ -80,10 +80,15 @@ zoom = 1.
 # WARNING: Do not set this radius to 0!
 CLICK_TOLERANCE_RADIUS  = 5
 CLICK_TOLERANCE_OFFSETS = []
+MARK_RING_OFFSETS = []
 for y in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
   for x in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
-    if x**2+y**2 > CLICK_TOLERANCE_RADIUS**2+1:
+    if x**2+y**2 <= CLICK_TOLERANCE_RADIUS**2+1:
       CLICK_TOLERANCE_OFFSETS.append((x, y))
+    if CLICK_TOLERANCE_RADIUS**2-8 <= x**2+y**2 <= CLICK_TOLERANCE_RADIUS**2+1:
+      MARK_RING_OFFSETS.append((x, y))
+markring = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
+                           2*CLICK_TOLERANCE_RADIUS+1))
 
 # A list of all on-screen objects (including buttons!)
 objectsList = []
@@ -97,7 +102,8 @@ idleClick = True
 
 
 tooltip_texts = {"AddStraightButton": "Add a straight path piece",
-                 "AppendStraightButton": "Append a straight path piece to a selected path piece"}
+                 "AppendStraightButton": "Append a straight path piece to a selected path piece",
+                 "ChangeActiveEndButton": "Switch between the active ends of a path piece"}
 
 
 #_______________________________________________________________________
@@ -255,14 +261,13 @@ class AddStraightButton(Button):
     infoMessage("Straight object added.")
 
   def tooltip(self, screen, mousePos=None):
-    if mousePos is None:
-      mousePos = pygame.mouse.get_pos()
     super(AddStraightButton, self).tooltip(screen, mousePos, tooltip_texts["AddStraightButton"])
 
 
 
 class AppendStraightButton(Button):
-  def __init__(self, name="AppendStraightButton", buttonRect=pygame.Rect(0,0,0,0),
+  def __init__(self, name="AppendStraightButton",
+               buttonRect=pygame.Rect(0,0,0,0),
                buttonSurfaceObj=pygame.Surface((0,0)),
                buttonClickedSurfaceObj=pygame.Surface((0,0))):
     img = pygame.image.load('{}/img/appendstraight.png'.format(SCRIPT_PATH))
@@ -288,9 +293,28 @@ class AppendStraightButton(Button):
       infoMessage("I am not doing anything =(")
 
   def tooltip(self, screen, mousePos=None):
-    if mousePos is None:
-      mousePos = pygame.mouse.get_pos()
     super(AppendStraightButton, self).tooltip(screen, mousePos, tooltip_texts["AppendStraightButton"])
+
+
+class ChangeActiveEndButton(Button):
+  def __init__(self, name="ChangeActiveEndButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/changeActiveEnd.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/changeActiveEndClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/changeActiveEndHighlighted.png'.format(SCRIPT_PATH))
+    super(ChangeActiveEndButton, self).__init__(name,
+                                                buttonRect,
+                                                img,
+                                                clickedImg,
+                                                highlightedImg)
+
+  def clickAction(self):
+    print "not doing anything either =("
+
+  def tooltip(self, screen, mousePos=None):
+    super(ChangeActiveEndButton, self).tooltip(screen, mousePos, tooltip_texts["ChangeActiveEndButton"])
 
 
 class Straight(ClickRegisteringObject):
@@ -301,10 +325,21 @@ class Straight(ClickRegisteringObject):
     self.endPoint = endPoint3D
     self.center = [(a+b)/2. for a,b in zip(startPoint3D, endPoint3D)]
     self.color = color
+    self.activeEnd = 0
+    self.activeEndPixelPos = (0,0)
     self.render()
 
+  def markActiveEnd(self, minx=0, miny=0):
+    """Should only be called by self.render()"""
+    pos  = self.startPoint if self.markActiveEnd == 0 else self.endPoint
+    ppos = project3dToPixelPosition(pos, ORIGIN)
+    global markring
+    self.surfaceObj.blit(markring,
+                         (int(ppos[0])-int(minx)+int(.5*CLICK_TOLERANCE_RADIUS),
+                          int(ppos[1])-int(miny)+int(.5*CLICK_TOLERANCE_RADIUS)))
+
   def render(self):
-    """call after viewing direction or zoom change to rerender object"""
+    """Call after viewing direction or zoom change to rerender object"""
     positions = (project3dToPixelPosition(self.startPoint, ORIGIN),
                  project3dToPixelPosition(self.endPoint, ORIGIN))
     min_x = int(min([p[0] for p in positions]))
@@ -316,10 +351,17 @@ class Straight(ClickRegisteringObject):
     linecenter = project3dToPixelPosition(((self.endPoint[0]+self.startPoint[0])/2,
                            (self.endPoint[1]+self.startPoint[1])/2,
                            (self.endPoint[2]+self.startPoint[2])/2), ORIGIN)
-    # safely overestimate the needed area (pad to avoid clipping lines)
-    tempSurfaceObj = pygame.Surface((max_x-min_x+CLICK_TOLERANCE_RADIUS,
-                                     max_y-min_y+CLICK_TOLERANCE_RADIUS))
+    # Safely overestimate the needed area (pad to avoid clipping lines)
+    tempSurfaceObj = pygame.Surface((max_x-min_x+3*CLICK_TOLERANCE_RADIUS,
+                                     max_y-min_y+3*CLICK_TOLERANCE_RADIUS))
     tempSurfaceObj = tempSurfaceObj.convert_alpha()
+
+    # Mark the active end
+    pos  = self.startPoint if self.markActiveEnd == 0 else self.endPoint
+    ppos = project3dToPixelPosition(pos, ORIGIN)
+    self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                              int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+
     tempSurfaceObjCenter = (tempSurfaceObj.get_size()[0]//2,
                             tempSurfaceObj.get_size()[1]//2)
     pygame.draw.aaline(tempSurfaceObj, self.color,
@@ -327,7 +369,7 @@ class Straight(ClickRegisteringObject):
                         positions[0][1]-linecenter[1]+tempSurfaceObjCenter[1]),
                        (positions[1][0]-linecenter[0]+tempSurfaceObjCenter[0],
                         positions[1][1]-linecenter[1]+tempSurfaceObjCenter[1]))
-    # repair the alpha values (transparency) at antialiasing border
+    # Repair the alpha values (transparency) at antialiasing border
     pixels = pygame.PixelArray(tempSurfaceObj)
     pixels.replace(pygame.Color(0, 0, 0, 255), pygame.Color(0, 0, 0, 0))
     del pixels
@@ -336,6 +378,12 @@ class Straight(ClickRegisteringObject):
     self.surfaceObj = tempSurfaceObj
     self.rect = tempSurfaceObjRect
 
+  def draw(self, screen):
+    # Mark the active end
+    if self.selected:
+      global markring
+      screen.blit(markring, self.activeEndPixelPos)
+    super(Straight, self).draw(screen)
 
 
 class HelixArc(ClickRegisteringObject):
@@ -355,18 +403,31 @@ class HelixArc(ClickRegisteringObject):
     self.points3d = []
     self.points3dHD = []
     step = 0
+    # Sample points along the curve
     while step < steps:
       a = angle if rightHanded else (360.-angle)
       x = cos(a*(pi/180.))*radius + center[0]
       y = sin(a*(pi/180.))*radius + center[1]
       z = height + center[2]
+      # Enable drawing in low and high resolution
       self.points3dHD.append((x,y,z))
-      if step % 10 == 0 or step == 999:
+      if step % 10 == 0 or step == steps-1:
         self.points3d.append((x,y,z))
       angle += stepsize
       height += heightstep
       step += 1
+    self.activeEnd = 0
+    self.activeEndPixelPos = (0,0)
     self.render()
+
+  def markActiveEnd(self, minx=0, miny=0):
+    """should only be called by self.render()"""
+    pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
+    ppos = project3dToPixelPosition(pos, (0,0))
+    global markring
+    self.surfaceObj.blit(markring,
+                         (int(ppos[0])-int(minx),
+                          int(ppos[1])-int(miny)))
 
   def render(self, highdefinition=False):
     """
@@ -390,6 +451,13 @@ class HelixArc(ClickRegisteringObject):
     sf = sf.convert_alpha()
     sf.fill((0,0,0,0))
     sfsize=sf.get_size()
+    self.surfaceObj = sf
+
+    # Mark the active end
+    pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
+    ppos = project3dToPixelPosition(pos, ORIGIN)
+    self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                              int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
     # Draw sample points, using Wu-style antialiasing
     # NOTE that AA is performed using only the alpha channel!
@@ -427,7 +495,6 @@ class HelixArc(ClickRegisteringObject):
 
     r = sf.get_rect()
     r.center = [ORIGIN[0]+self.centershift[0], ORIGIN[1]+self.centershift[1]]
-    self.surfaceObj = sf
     self.rect = r
 
   def draw(self, screen):
@@ -435,6 +502,9 @@ class HelixArc(ClickRegisteringObject):
     The HelixArc needs special treatment, as its boundingbox depends heavily
     on the viewing direction.
     """
+    if self.selected:
+      global markring
+      screen.blit(markring, self.activeEndPixelPos)
     ppos = project3dToPixelPosition(self.center)
     self.rect.center = [ppos[0]+self.centershift[0],
                         ppos[1]+self.centershift[1]]
@@ -575,7 +645,9 @@ def makeGUIButtons():
   to_make = ((AddStraightButton, "addStraightButton",
                 (WINDOW_SIZE[0], 0)),
              (AppendStraightButton, "appendStraightButton",
-                (WINDOW_SIZE[0]-50, 0)))
+                (WINDOW_SIZE[0]-50, 0)),
+             (ChangeActiveEndButton, "changeActiveEndButton",
+                (WINDOW_SIZE[0], 50)))
 
   for buttonClass, name, (x,y) in to_make:
     newButton = buttonClass(name)
@@ -716,7 +788,7 @@ def main():
                       format='%(asctime)s %(levelname)s: %(message)s',
                       stream=sys.stdout)
 
-  # initialize pygame
+  # Initialize pygame
   pygame.init()
   screen = pygame.display.set_mode(WINDOW_SIZE)
 
@@ -725,22 +797,31 @@ def main():
   icon = pygame.image.load('{}/img/icon.png'.format(SCRIPT_PATH))
   pygame.display.set_icon(icon)
 
-  # set window title
+  # Set window title
   pygame.display.set_caption("Mayday Level Editor / Camera Demo")
 
-  # set mouse visible
+  # Make mouse visible
   pygame.mouse.set_visible(1)
 
-  # create clock object used to limit the framerate
+  # Create clock object used to limit the framerate
   clock = pygame.time.Clock()
-  # repeat keypresses as long as the are held down (=resending events?)
+  # Repeat keypresses as long as the are held down (=resending events?)
   pygame.key.set_repeat(1, 30)
 
-  # render the initial background ("floor" grid)
+  # Render the initial background ("floor" grid)
   BGSurfaceObj = render_background()
 
-  # create GUI buttons
+  # Create GUI buttons
   makeGUIButtons()
+
+  # Render the marker for a path piece's active end
+  global markring
+  markring = markring.convert_alpha()
+  markring.fill((0,0,0,0))
+  for dx,dy in MARK_RING_OFFSETS:
+    markring.set_at((CLICK_TOLERANCE_RADIUS+dx,
+                     CLICK_TOLERANCE_RADIUS+dy),
+                    (255,0,0))
 
   boxSelectionInProgress = False
   boxStartPoint = (0, 0)
@@ -880,10 +961,10 @@ def main():
     # Change camera settings using keyboard
     if pressedKeys[pygame.K_a] and not \
        pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
-      compute_projection_parameters(azimuth-azimuth_ANGULAR_SPEED, elevation, zoom)
+      compute_projection_parameters(azimuth-AZIMUTH_ANGULAR_SPEED, elevation, zoom)
       rerender = True
     if pressedKeys[pygame.K_d]:
-      compute_projection_parameters(azimuth+azimuth_ANGULAR_SPEED, elevation, zoom)
+      compute_projection_parameters(azimuth+AZIMUTH_ANGULAR_SPEED, elevation, zoom)
       rerender = True
     if pressedKeys[pygame.K_w]:
       compute_projection_parameters(azimuth, elevation+ELEVATION_ANGULAR_SPEED, zoom)
@@ -907,9 +988,9 @@ def main():
       if mmbDown:
         if mouseRelativeMotionThisTick[0] != 0 or \
            mouseRelativeMotionThisTick[1] != 0:
-          compute_projection_parameters(azimuth-azimuth_ANGULAR_SPEED*
+          compute_projection_parameters(azimuth-AZIMUTH_ANGULAR_SPEED*
                                                  mouseRelativeMotionThisTick[0]*
-                                                 MOUSE_azimuth_ANGULAR_SPEED,
+                                                 MOUSE_AZIMUTH_ANGULAR_SPEED,
                                         elevation+ELEVATION_ANGULAR_SPEED*
                                                   mouseRelativeMotionThisTick[1]*
                                                   MOUSE_ELEVATION_ANGULAR_SPEED,
@@ -1063,7 +1144,6 @@ def main():
          o.cursorOnObject() and \
          not boxSelectionInProgress:
         o.tooltip(screen)
-
 
     # Actually draw the stuff to screen
     pygame.display.flip()
