@@ -311,7 +311,17 @@ class ChangeActiveEndButton(Button):
                                                 highlightedImg)
 
   def clickAction(self):
-    print "not doing anything either =("
+    # Check if the button is enabled
+    try:
+      super(ChangeActiveEndButton, self).clickAction()
+    except:
+      return None
+    so = selectedObjects[0]
+    so.activeEnd = 1 - so.activeEnd
+    if isinstance(so, HelixArc):
+      so.render(True)
+    else:
+      so.render()
 
   def tooltip(self, screen, mousePos=None):
     super(ChangeActiveEndButton, self).tooltip(screen, mousePos, tooltip_texts["ChangeActiveEndButton"])
@@ -328,15 +338,6 @@ class Straight(ClickRegisteringObject):
     self.activeEnd = 0
     self.activeEndPixelPos = (0,0)
     self.render()
-
-  def markActiveEnd(self, minx=0, miny=0):
-    """Should only be called by self.render()"""
-    pos  = self.startPoint if self.markActiveEnd == 0 else self.endPoint
-    ppos = project3dToPixelPosition(pos, ORIGIN)
-    global markring
-    self.surfaceObj.blit(markring,
-                         (int(ppos[0])-int(minx)+int(.5*CLICK_TOLERANCE_RADIUS),
-                          int(ppos[1])-int(miny)+int(.5*CLICK_TOLERANCE_RADIUS)))
 
   def render(self):
     """Call after viewing direction or zoom change to rerender object"""
@@ -357,7 +358,7 @@ class Straight(ClickRegisteringObject):
     tempSurfaceObj = tempSurfaceObj.convert_alpha()
 
     # Mark the active end
-    pos  = self.startPoint if self.markActiveEnd == 0 else self.endPoint
+    pos  = self.startPoint if self.activeEnd == 0 else self.endPoint
     ppos = project3dToPixelPosition(pos, ORIGIN)
     self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                               int(ppos[1])-CLICK_TOLERANCE_RADIUS)
@@ -419,15 +420,6 @@ class HelixArc(ClickRegisteringObject):
     self.activeEnd = 0
     self.activeEndPixelPos = (0,0)
     self.render()
-
-  def markActiveEnd(self, minx=0, miny=0):
-    """should only be called by self.render()"""
-    pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
-    ppos = project3dToPixelPosition(pos, (0,0))
-    global markring
-    self.surfaceObj.blit(markring,
-                         (int(ppos[0])-int(minx),
-                          int(ppos[1])-int(miny)))
 
   def render(self, highdefinition=False):
     """
@@ -929,7 +921,7 @@ def main():
           raise Exception('Unknown mouse button %d!' % event.button)
       # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
-        if lmbLastTick and not boxSelectionInProgress:
+        if lmbLastTick and not boxSelectionInProgress and not dragStartedOnGUI:
           deselectObjects()
         # Only "click"-select objects (box selection is done later)
         if not boxSelectionInProgress:
@@ -1120,12 +1112,12 @@ def main():
 
     # Update buttons
     # TODO refactor into Button method?
-    if not selectedObjects or \
-       len(selectedObjects) != 1 or \
-       len([o for o in selectedObjects if isinstance(o, Straight)]) != 1:
+    if not selectedObjects or len(selectedObjects) != 1:
       getObjectByName('appendStraightButton').disable()
+      getObjectByName('changeActiveEndButton').disable()
     else:
       getObjectByName('appendStraightButton').enable()
+      getObjectByName('changeActiveEndButton').enable()
 
     # Draw GUI buttons
     for o in objectsList:
