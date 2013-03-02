@@ -33,7 +33,7 @@
 #                  3. "clicked" iff (EDT image at click position < threshold)
 #   note: didn't use distance transforms.
 # - render font objects only once (currently: every frame, and fonts eat CPU)
-#   applicable pbjects include: debug texts, button tooltips, "toggle" text
+#   applicable pbjects include: debug texts, button tooltips (DONE), "toggle" text (DONE)
 # - comment, comment, comment, document, document, document!
 #
 # ONLY IN GAME
@@ -50,7 +50,7 @@ from math import pi, sin, cos
 import logging, sys, os
 from collections import deque
 
-SCRIPT_PATH = os.path.dirname(__file__)
+SCRIPT_PATH = '/opt/mayday'#os.path.dirname(__file__)
 
 WINDOW_SIZE = (800, 600)
 ORIGIN = (WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2)
@@ -96,15 +96,21 @@ objectsList = []
 selectedObjects = []
 # Holds the strings added by infoMessage(), read by drawHelpDebugInfoMessages()
 messageQueue = deque()
+messageQueueChange = False
 
 # Tells if a click was "doing nothing" (click into empty space)
 idleClick = True
 
 
-tooltip_texts = {"AddStraightButton": "Add a straight path piece",
-                 "AppendStraightButton": "Append a straight path piece to a selected path piece",
-                 "ChangeActiveEndButton": "Switch between the active ends of a path piece"}
-
+TOOLTIP_TEXTS = {"dummy":
+                  "<<<TOOLTIP_TEXTS[CLASS_NAME_AS_STRING]>>>",
+                 "AddStraightButton":
+                  "Add a straight path piece",
+                 "AppendStraightButton":
+                  "Append a straight path piece to a selected path piece",
+                 "ChangeActiveEndButton":
+                  "Switch between the active ends of a path piece"}
+TOOLTIP_SURFACEOBJECTS = {}
 
 #_______________________________________________________________________
 
@@ -227,14 +233,14 @@ class Button(ClickRegisteringObject):
     else:
       screen.blit(self.surfaceObj, self.rect)
 
-  def tooltip(self, screen, mousePos=None, text="<<<Button.tooltip().text>>>"):
+  def tooltip(self, screen, mousePos=None, key="dummy"):
     """Check cursorOnObject before calling!"""
     if mousePos is None:
       mousePos = pygame.mouse.get_pos()
-    tmpTooltipTextObj = pygame.font.SysFont(None, 20).render(text, True, (0, 0, 0), (255, 255, 255))
-    tmpTooltipTextObjRect = tmpTooltipTextObj.get_rect()
+    tooltipSurfaceObj = TOOLTIP_SURFACEOBJECTS[key]
+    tmpTooltipTextObjRect = tooltipSurfaceObj.get_rect()
     tmpTooltipTextObjRect.topright = (mousePos[0]-5, mousePos[1]+5)
-    screen.blit(tmpTooltipTextObj, tmpTooltipTextObjRect)
+    screen.blit(tooltipSurfaceObj, tmpTooltipTextObjRect)
 
 
 class AddStraightButton(Button):
@@ -261,7 +267,7 @@ class AddStraightButton(Button):
     infoMessage("Straight object added.")
 
   def tooltip(self, screen, mousePos=None):
-    super(AddStraightButton, self).tooltip(screen, mousePos, tooltip_texts["AddStraightButton"])
+    super(AddStraightButton, self).tooltip(screen, mousePos, "AddStraightButton")
 
 
 
@@ -293,7 +299,7 @@ class AppendStraightButton(Button):
       infoMessage("I am not doing anything =(")
 
   def tooltip(self, screen, mousePos=None):
-    super(AppendStraightButton, self).tooltip(screen, mousePos, tooltip_texts["AppendStraightButton"])
+    super(AppendStraightButton, self).tooltip(screen, mousePos, "AppendStraightButton")
 
 
 class ChangeActiveEndButton(Button):
@@ -324,17 +330,23 @@ class ChangeActiveEndButton(Button):
       so.render()
 
   def tooltip(self, screen, mousePos=None):
-    super(ChangeActiveEndButton, self).tooltip(screen, mousePos, tooltip_texts["ChangeActiveEndButton"])
+    super(ChangeActiveEndButton, self).tooltip(screen, mousePos, "ChangeActiveEndButton")
 
 
-class Straight(ClickRegisteringObject):
+class PathPiece(ClickRegisteringObject):
+  def __init__(self):
+    super(PathPiece, self).__init__()
+
+
+class Straight(PathPiece):
   def __init__(self,
                startPoint3D=[0,0,0], endPoint3D=[0,0,0], color=(0,0,255)):
     super(Straight, self).__init__()
     self.startPoint = startPoint3D
     self.endPoint = endPoint3D
-    self.center = [(a+b)/2. for a,b in zip(startPoint3D, endPoint3D)]
     self.color = color
+
+    self.center = [(a+b)/2. for a,b in zip(startPoint3D, endPoint3D)]
     self.activeEnd = 0
     self.activeEndPixelPos = (0,0)
     self.render()
@@ -387,7 +399,9 @@ class Straight(ClickRegisteringObject):
     super(Straight, self).draw(screen)
 
 
-class HelixArc(ClickRegisteringObject):
+class HelixArc(PathPiece):
+  _HQFrameDelay = 3
+
   def __init__(self,
                startHeight=-40., endHeight=40.,
                startAngle=0., endAngle=720.,
@@ -397,6 +411,7 @@ class HelixArc(ClickRegisteringObject):
     self.center = center[:]
     self.centershift = [0,0]
     self.color = color
+
     steps = endAngle - startAngle
     heightstep = (endHeight-startHeight)/steps
     stepsize = (endAngle-startAngle)/steps
@@ -412,6 +427,7 @@ class HelixArc(ClickRegisteringObject):
       z = height + center[2]
       # Enable drawing in low and high resolution
       self.points3dHD.append((x,y,z))
+      # Ensure that the first and last point are in the low res samples
       if step % 10 == 0 or step == steps-1:
         self.points3d.append((x,y,z))
       angle += stepsize
@@ -656,6 +672,8 @@ def makeGUIButtons():
 
 def infoMessage(msg):
   """Append a message to the queue and keep the queue at a max length"""
+  global messageQueue, messageQueueChange
+  messageQueueChange = True
   messageQueue.append(msg)
   while len(messageQueue) > 8:
     messageQueue.popleft()
@@ -704,44 +722,68 @@ def discardDeprecatedSelections(rect):
 
 
 
-def drawHelpDebugInfoMessages(screen):
-  """draw helpful texts and print the info message queue"""
-  global selectedObjects
+def drawHelpDebugInfoMessages(screen, rerender=False,
+                              msgs1=[], msgs2=[], msgq=[]):
+  """
+  Draw helpful texts and print the info message queue.
+  WARNING: msgs1, msgs2 and msgq use Python's mutable default arguments
+           functionality.
+           DO NOT set them manually or use them in a function call!
+  """
+  global selectedObjects, messageQueue, messageQueueChange
+
   for so in selectedObjects:
     pos = so.center
     ppos = project3dToPixelPosition(pos)
-    # render info text at (and about) position (3D -> pixels)
+    # Render info text at (and about) position (3D -> pixels)
     text = '(%.1f, %.1f, %.1f) -> (%d, %d)'%(pos[0], pos[1], pos[2],
                                              ppos[0], ppos[1])
     textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
     textRect = textObj.get_rect()
     textRect.topleft = (ppos[0]+10, ppos[1])
     screen.blit(textObj, textRect)
-  # render info text about azimuth and elevation angles
-  lines = ["azimuth angle = %.2f RAD (ca. %d DEG)" % (azimuth, azimuth*180./pi),
-           "Elevation angle = %.2f RAD (ca. %d DEG)" % (elevation, elevation*180./pi),
-           "Zoom factor = %.2f" % zoom]
-  for i in range(3):
-    textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (0, (i+1)*15)
-    screen.blit(textObj, textRect)
-  lines = ["Use WASD or MIDDLE MOUSE BUTTON to rotate the camera (isometric projection).",
-           "Move selected objects with the ARROW KEYS and PAGE-UP/DOWN, or drag them",
-           "  using the mouse (hold SHIFT to move along the z-axis).",
-           "Zoom in and out using the +/- keys, RIGHT MOUSE BUTTON or MOUSE WHEEL.",
-           "Press HOME to reset the camera.",
-           "Ctrl+A selects all objects."][::-1]
-  for i in range(len(lines)):
-    textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topleft = (0, WINDOW_SIZE[1]-(i+1)*15)
-    screen.blit(textObj, textRect)
-  for i, m in enumerate(messageQueue):
-    textObj = pygame.font.SysFont(None, 18).render(messageQueue[i], True, (0, 0, 0))
-    textRect = textObj.get_rect()
-    textRect.topright = (WINDOW_SIZE[0]-5, WINDOW_SIZE[1]-(i+1)*15)
-    screen.blit(textObj, textRect)
+
+  # Render info text about azimuth and elevation angles
+  if rerender or not msgs1:
+    # Change list in-place. "msgs1=[]" would not work, because with the next
+    # function call msgs1 would again be empty.
+    msgs1[:] = []
+    lines = ["azimuth angle = %.2f RAD (ca. %d DEG)" % (azimuth, azimuth*180./pi),
+             "Elevation angle = %.2f RAD (ca. %d DEG)" % (elevation, elevation*180./pi),
+             "Zoom factor = %.2f" % zoom]
+    for i in range(3):
+      textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
+      textRect = textObj.get_rect()
+      textRect.topleft = (0, (i+1)*15)
+      msgs1.append((textObj, textRect))
+
+  # Some help text
+  if not msgs2:
+    lines = ["Use WASD or MIDDLE MOUSE BUTTON to rotate the camera (isometric projection).",
+             "Move selected objects with the ARROW KEYS and PAGE-UP/DOWN, or drag them",
+             "  using the mouse (hold SHIFT to move along the z-axis).",
+             "Zoom in and out using the +/- keys, RIGHT MOUSE BUTTON or MOUSE WHEEL.",
+             "Press HOME to reset the camera.",
+             "Ctrl+A selects all objects."][::-1]
+    for i in range(len(lines)):
+      textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
+      textRect = textObj.get_rect()
+      textRect.topleft = (0, WINDOW_SIZE[1]-(i+1)*15)
+      msgs2.append((textObj, textRect))
+
+  # Print the info messages from messageQueue
+  if messageQueueChange or not msgq:
+    messageQueueChange = False
+    msgq[:] = []
+    for i, m in enumerate(messageQueue):
+      textObj = pygame.font.SysFont(None, 18).render(messageQueue[i], True, (0, 0, 0))
+      textRect = textObj.get_rect()
+      textRect.topright = (WINDOW_SIZE[0]-5, WINDOW_SIZE[1]-(i+1)*15)
+      msgq.append((textObj, textRect))
+
+  for l in (msgs1, msgs2, msgq):
+    for text, rect in l:
+      screen.blit(text, rect)
 
 
 def markObject(obj, screen):
@@ -806,7 +848,7 @@ def main():
   # Create GUI buttons
   makeGUIButtons()
 
-  # Render the marker for a path piece's active end
+  # Prerender the marker for a path piece's active end
   global markring
   markring = markring.convert_alpha()
   markring.fill((0,0,0,0))
@@ -814,6 +856,11 @@ def main():
     markring.set_at((CLICK_TOLERANCE_RADIUS+dx,
                      CLICK_TOLERANCE_RADIUS+dy),
                     (255,0,0))
+
+  # Prerender the button tooltips
+  for k, v in TOOLTIP_TEXTS.items():
+    tmp = pygame.font.SysFont(None, 20).render(v, True, (0,0,0), (255,255,255))
+    TOOLTIP_SURFACEOBJECTS[k] = tmp
 
   boxSelectionInProgress = False
   boxStartPoint = (0, 0)
@@ -837,14 +884,30 @@ def main():
   ### DEBUG
   objectsList.append(HelixArc())
 
+  # Prerender font object
+  toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.', True, (0,0,0))
+
+  # Global frame counter
+  totalFrameCount = 0
+
   # MAIN LOOP
   running = True
   while running:
     # Limit to 30 fps
     clock.tick(30)
 
+    totalFrameCount += 1
+
     # pygame.mouse.get_pressed() only works after depleting the event queue
     thisTickEvents = pygame.event.get()
+
+    # Performance trick: Don't do ANYTHING unless something happens!
+    # NOTE that even mouse movement within the game window is an event.
+    #
+    # (totalFrameCount > HelixArc._HQFrameDelay) is a hack to ensure that the
+    # first few frames are rendered even if no events occur
+    if not thisTickEvents and totalFrameCount > HelixArc._HQFrameDelay:
+      thisTickEvents.append(pygame.event.wait())
 
     # Check current status of mouse buttons (not events)
     lmbDown, mmbDown, rmbDown = pygame.mouse.get_pressed()
@@ -1053,7 +1116,7 @@ def main():
       framesWithoutRerendering += 1
 
     # Render HelixArcs in good quality if the scene is stationary
-    if framesWithoutRerendering == 3:
+    if framesWithoutRerendering == HelixArc._HQFrameDelay:
       infoMessage("Rendering HelixArcs in HD...")
       for o in objectsList:
         if isinstance(o, HelixArc):
@@ -1070,13 +1133,11 @@ def main():
       drawHelpLines(so.center, screen)
 
     # Print helpful information and debugging messages (CPU intensive!)
-    text = 'Press H to toggle debug information.'
-    textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
-    textRect = textObj.get_rect()
+    textRect = toggleDebugTextObj.get_rect()
     textRect.topleft = (0,0)
-    screen.blit(textObj, textRect)
+    screen.blit(toggleDebugTextObj, textRect)
     if printDebug:
-      drawHelpDebugInfoMessages(screen)
+      drawHelpDebugInfoMessages(screen, rerender)
 
     # Draw objects
     for o in objectsList:
