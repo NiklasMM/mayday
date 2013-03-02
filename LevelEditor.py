@@ -32,8 +32,8 @@
 #                  2. perform Euclidean Distance Transform on copy
 #                  3. "clicked" iff (EDT image at click position < threshold)
 #   note: didn't use distance transforms.
-# - render font objects only once (currently: every frame, and fonts eat CPU)
-#   applicable pbjects include: debug texts, button tooltips (DONE), "toggle" text (DONE)
+# - DONE render font objects only once (currently: every frame, and fonts eat CPU)
+#   applicable pbjects include: debug texts, button tooltips, "toggle" text
 # - comment, comment, comment, document, document, document!
 #
 # ONLY IN GAME
@@ -351,6 +351,14 @@ class Straight(PathPiece):
     self.activeEndPixelPos = (0,0)
     self.render()
 
+  def moveTo(self, newPos):
+    startOffset = [(i-j) for i,j in zip(self.startPoint, self.center)]
+    endOffset = [(i-j) for i,j in zip(self.endPoint, self.center)]
+    super(Straight, self).moveTo(newPos)
+    self.startPoint = tuple([(i+j) for i,j in zip(startOffset, self.center)])
+    self.endPoint = tuple([(i+j) for i,j in zip(endOffset, self.center)])
+    self.render()
+
   def render(self):
     """Call after viewing direction or zoom change to rerender object"""
     positions = (project3dToPixelPosition(self.startPoint, ORIGIN),
@@ -463,7 +471,7 @@ class HelixArc(PathPiece):
 
     # Mark the active end
     pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
-    ppos = project3dToPixelPosition(pos, ORIGIN)
+    ppos = project3dToPixelPosition(pos)
     self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                               int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
@@ -511,6 +519,10 @@ class HelixArc(PathPiece):
     on the viewing direction.
     """
     if self.selected:
+      pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
+      ppos = project3dToPixelPosition([i+j for i,j in zip(pos,self.center)])
+      self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
       global markring
       screen.blit(markring, self.activeEndPixelPos)
     ppos = project3dToPixelPosition(self.center)
@@ -906,7 +918,7 @@ def main():
     #
     # (totalFrameCount > HelixArc._HQFrameDelay) is a hack to ensure that the
     # first few frames are rendered even if no events occur
-    if not thisTickEvents and totalFrameCount > HelixArc._HQFrameDelay:
+    if not pygame.event.peek() and totalFrameCount > HelixArc._HQFrameDelay:
       thisTickEvents.append(pygame.event.wait())
 
     # Check current status of mouse buttons (not events)
