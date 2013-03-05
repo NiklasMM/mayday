@@ -81,13 +81,19 @@ zoom = 1.
 CLICK_TOLERANCE_RADIUS  = 5
 CLICK_TOLERANCE_OFFSETS = []
 MARK_RING_OFFSETS = []
+MARK_DOT_OFFSETS = []
 for y in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
   for x in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
     if x**2+y**2 <= CLICK_TOLERANCE_RADIUS**2+1:
       CLICK_TOLERANCE_OFFSETS.append((x, y))
     if CLICK_TOLERANCE_RADIUS**2-8 <= x**2+y**2 <= CLICK_TOLERANCE_RADIUS**2+1:
       MARK_RING_OFFSETS.append((x, y))
+    if x**2+y**2 <= CLICK_TOLERANCE_RADIUS**2-16:
+      MARK_DOT_OFFSETS.append((x,y))
+
 markring = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
+                           2*CLICK_TOLERANCE_RADIUS+1))
+markdot  = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
                            2*CLICK_TOLERANCE_RADIUS+1))
 
 # A list of all on-screen objects (including buttons!)
@@ -131,6 +137,9 @@ class DisplayedObject(object):
   def moveTo(self, newPos):
     self.center = newPos[:]
 
+  def moveByOffset(self, offset):
+    self.center = [i+j for i,j in zip(self.center, offset)]
+
   def moveByPixelOffset(self, relativePixelMotion):
     z = self.center[2]
     ppos = project3dToPixelPosition(self.center)
@@ -167,9 +176,6 @@ class ClickRegisteringObject(DisplayedObject):
           return True
       except: pass
     return False
-    # return self.rect.collidepoint(mousePos) and \
-           # self.surfaceObj.get_at((mousePos[0]-self.rect.topleft[0],
-                                   # mousePos[1]-self.rect.topleft[1])) != (0, 0, 0, 0)
 
   def inRect(self, rect):
     return rect.collidepoint(self.rect.center)
@@ -349,6 +355,7 @@ class Straight(PathPiece):
     self.center = [(a+b)/2. for a,b in zip(startPoint3D, endPoint3D)]
     self.activeEnd = 0
     self.activeEndPixelPos = (0,0)
+    self.inactiveEndPixelPos = (0,0)
     self.render()
 
   def moveTo(self, newPos):
@@ -382,6 +389,10 @@ class Straight(PathPiece):
     ppos = project3dToPixelPosition(pos, ORIGIN)
     self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                               int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+    pos  = self.endPoint if self.activeEnd == 0 else self.startPoint
+    ppos = project3dToPixelPosition(pos, ORIGIN)
+    self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
     tempSurfaceObjCenter = (tempSurfaceObj.get_size()[0]//2,
                             tempSurfaceObj.get_size()[1]//2)
@@ -402,8 +413,10 @@ class Straight(PathPiece):
   def draw(self, screen):
     # Mark the active end
     if self.selected:
-      global markring
+      global markring, markdot
       screen.blit(markring, self.activeEndPixelPos)
+      screen.blit(markdot, self.activeEndPixelPos)
+      screen.blit(markring, self.inactiveEndPixelPos)
     super(Straight, self).draw(screen)
 
 
@@ -474,6 +487,10 @@ class HelixArc(PathPiece):
     ppos = project3dToPixelPosition(pos)
     self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                               int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+    pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
+    ppos = project3dToPixelPosition(pos)
+    self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
     # Draw sample points, using Wu-style antialiasing
     # NOTE that AA is performed using only the alpha channel!
@@ -523,8 +540,14 @@ class HelixArc(PathPiece):
       ppos = project3dToPixelPosition([i+j for i,j in zip(pos,self.center)])
       self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
-      global markring
+      pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
+      ppos = project3dToPixelPosition([i+j for i,j in zip(pos,self.center)])
+      self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+      global markring, markdot
       screen.blit(markring, self.activeEndPixelPos)
+      screen.blit(markdot, self.activeEndPixelPos)
+      screen.blit(markring, self.inactiveEndPixelPos)
     ppos = project3dToPixelPosition(self.center)
     self.rect.center = [ppos[0]+self.centershift[0],
                         ppos[1]+self.centershift[1]]
@@ -861,13 +884,19 @@ def main():
   makeGUIButtons()
 
   # Prerender the marker for a path piece's active end
-  global markring
+  global markring, markdot
   markring = markring.convert_alpha()
+  markdot  = markdot.convert_alpha()
   markring.fill((0,0,0,0))
+  markdot.fill((0,0,0,0))
   for dx,dy in MARK_RING_OFFSETS:
     markring.set_at((CLICK_TOLERANCE_RADIUS+dx,
                      CLICK_TOLERANCE_RADIUS+dy),
                     (255,0,0))
+  for dx,dy in MARK_DOT_OFFSETS:
+    markdot.set_at((CLICK_TOLERANCE_RADIUS+dx,
+                    CLICK_TOLERANCE_RADIUS+dy),
+                   (255,0,0))
 
   # Prerender the button tooltips
   for k, v in TOOLTIP_TEXTS.items():
@@ -918,7 +947,9 @@ def main():
     #
     # (totalFrameCount > HelixArc._HQFrameDelay) is a hack to ensure that the
     # first few frames are rendered even if no events occur
-    if not pygame.event.peek() and totalFrameCount > HelixArc._HQFrameDelay:
+    if not pygame.event.peek() and \
+       totalFrameCount > HelixArc._HQFrameDelay and \
+       not framesWithoutRerendering < 3:
       thisTickEvents.append(pygame.event.wait())
 
     # Check current status of mouse buttons (not events)
@@ -926,6 +957,7 @@ def main():
 
     # Get relative mouse movement since the last timetick
     mouseRelativeMotionThisTick = pygame.mouse.get_rel()
+    mousePos = pygame.mouse.get_pos()
 
     # Update dragManhattanDistance if the button status has not changed since last tick
     if (lmbDown and lmbLastTick) or \
@@ -972,7 +1004,7 @@ def main():
           if lmbDown:
             GUIwasClicked = False
             for o in objectsList:
-              if isinstance(o, Button) and o.cursorOnObject():
+              if isinstance(o, Button) and o.cursorOnObject(mousePos):
                 GUIwasClicked = True
                 dragStartedOnGUI = True
                 infoMessage("dragStartedOnGUI")
@@ -980,7 +1012,7 @@ def main():
                 o.clickAction()
             if not GUIwasClicked:
               for so in selectedObjects:
-                if so.cursorOnObject():
+                if so.cursorOnObject(mousePos):
                   dragStartedOnSelectedObject = True
                   infoMessage("dragStartedOnSelectedObject")
                   break
@@ -1001,7 +1033,7 @@ def main():
         # Only "click"-select objects (box selection is done later)
         if not boxSelectionInProgress:
           for o in objectsList:
-            if o.cursorOnObject() and not isinstance(o, Button):
+            if o.cursorOnObject(mousePos) and not isinstance(o, Button):
               selectObjects(o)
               infoMessage("Object selected (via Click).")
               # Click-selection can only select one object at a time
@@ -1089,20 +1121,23 @@ def main():
         if not isinstance(o, Button):
           selectObjects(o)
 
-    # Move selected objects per keyboard
-    for so in selectedObjects:
-      if pressedKeys[pygame.K_UP]:
-        so.center[1] += 10
-      if pressedKeys[pygame.K_DOWN]:
-        so.center[1] -= 10
-      if pressedKeys[pygame.K_LEFT]:
-        so.center[0] -= 10
-      if pressedKeys[pygame.K_RIGHT]:
-        so.center[0] += 10
-      if pressedKeys[pygame.K_PAGEUP]:
-        so.center[2] += 10
-      if pressedKeys[pygame.K_PAGEDOWN]:
-        so.center[2] -= 10
+    """# Move selected objects per keyboard
+    try:
+      for so in selectedObjects:
+        if pressedKeys[pygame.K_UP]:
+          so.moveByOffset((0,10,0))
+        if pressedKeys[pygame.K_DOWN]:
+          so.moveByOffset((0,-10,0))
+        if pressedKeys[pygame.K_LEFT]:
+          so.moveByOffset((-10,0,0))
+        if pressedKeys[pygame.K_RIGHT]:
+          so.moveByOffset((10,0,0))
+        if pressedKeys[pygame.K_PAGEUP]:
+          so.moveByOffset((0,0,10))
+        if pressedKeys[pygame.K_PAGEDOWN]:
+          so.moveByOffset((0,0,-10))
+    except:
+      for so in selectedObjects: print so"""
 
     # Move selected objects per mouse
     if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD and \
@@ -1195,7 +1230,7 @@ def main():
     # Draw GUI buttons
     for o in objectsList:
       if isinstance(o, Button):
-        if o.cursorOnObject() and \
+        if o.cursorOnObject(mousePos) and \
            not dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD :
           o.highlight()
           o.draw(screen)
@@ -1206,7 +1241,7 @@ def main():
     # Draw GUI tooltips (after drawing all buttons -> tooltips always on top)
     for o in objectsList:
       if isinstance(o, Button) and \
-         o.cursorOnObject() and \
+         o.cursorOnObject(mousePos) and \
          not boxSelectionInProgress:
         o.tooltip(screen)
 
