@@ -15,6 +15,7 @@
 # - context menu
 # - undo/redo
 # - while moving objects: hold CTRL to snap to grid
+# - path pieces cast shadows onto the ground
 #
 # TODO fixes
 # - DONE HelixArc drawing is still wrong
@@ -53,7 +54,7 @@ from collections import deque
 SCRIPT_PATH = '/opt/mayday'#os.path.dirname(__file__)
 
 WINDOW_SIZE = (800, 600)
-ORIGIN = (WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2)
+ORIGIN = [WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2]
 AZIMUTH_ANGULAR_SPEED = 0.05
 ELEVATION_ANGULAR_SPEED = 0.05
 ZOOM_IN_SPEED = 1.05
@@ -140,6 +141,9 @@ class DisplayedObject(object):
   def moveByOffset(self, offset):
     self.center = [i+j for i,j in zip(self.center, offset)]
 
+  def getActiveEndPoint3d(self):
+    return [0,0,0]
+
   def moveByPixelOffset(self, relativePixelMotion):
     z = self.center[2]
     ppos = project3dToPixelPosition(self.center)
@@ -179,7 +183,6 @@ class ClickRegisteringObject(DisplayedObject):
 
   def inRect(self, rect):
     return rect.collidepoint(self.rect.center)
-
 
 
 class Button(ClickRegisteringObject):
@@ -341,7 +344,19 @@ class ChangeActiveEndButton(Button):
 
 class PathPiece(ClickRegisteringObject):
   def __init__(self):
+    self.activeEndPixelPos = (0,0)
+    self.inactiveEndPixelPos = (0,0)
     super(PathPiece, self).__init__()
+
+  def cursorOnEnd(self, mousePos=None, activeEnd=True):
+    if mousePos is None:
+      mousePos = pygame.mouse.get_pos()
+    if not self.rect.collidepoint(mousePos):
+      return False
+    ppos = self.activeEndPixelPos if activeEnd else self.inactiveEndPixelPos
+    return (mousePos[0]-CLICK_TOLERANCE_RADIUS-ppos[0])**2 + \
+           (mousePos[1]-CLICK_TOLERANCE_RADIUS-ppos[1])**2   < CLICK_TOLERANCE_RADIUS**2-1
+
 
 
 class Straight(PathPiece):
@@ -351,11 +366,8 @@ class Straight(PathPiece):
     self.startPoint = startPoint3D
     self.endPoint = endPoint3D
     self.color = color
-
     self.center = [(a+b)/2. for a,b in zip(startPoint3D, endPoint3D)]
     self.activeEnd = 0
-    self.activeEndPixelPos = (0,0)
-    self.inactiveEndPixelPos = (0,0)
     self.render()
 
   def moveTo(self, newPos):
@@ -394,8 +406,8 @@ class Straight(PathPiece):
     self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
-    tempSurfaceObjCenter = (tempSurfaceObj.get_size()[0]//2,
-                            tempSurfaceObj.get_size()[1]//2)
+    tempSurfaceObjCenter = [tempSurfaceObj.get_size()[0]//2,
+                            tempSurfaceObj.get_size()[1]//2]
     pygame.draw.aaline(tempSurfaceObj, self.color,
                        (positions[0][0]-linecenter[0]+tempSurfaceObjCenter[0],
                         positions[0][1]-linecenter[1]+tempSurfaceObjCenter[1]),
@@ -410,10 +422,12 @@ class Straight(PathPiece):
     self.surfaceObj = tempSurfaceObj
     self.rect = tempSurfaceObjRect
 
+  def getActiveEndPoint3d(self):
+    return self.startPoint if self.activeEnd==0 else self.endPoint
+
   def draw(self, screen):
     # Mark the active end
     if self.selected:
-      global markring, markdot
       screen.blit(markring, self.activeEndPixelPos)
       screen.blit(markdot, self.activeEndPixelPos)
       screen.blit(markring, self.inactiveEndPixelPos)
@@ -421,6 +435,7 @@ class Straight(PathPiece):
 
 
 class HelixArc(PathPiece):
+  # Number of frames to wait until rendering in high resolution
   _HQFrameDelay = 3
 
   def __init__(self,
@@ -432,31 +447,76 @@ class HelixArc(PathPiece):
     self.center = center[:]
     self.centershift = [0,0]
     self.color = color
+    self.startAngle, self.endAngle = startAngle, endAngle
+    self.startHeight, self.endHeight = startHeight, endHeight
+    self.rightHanded = rightHanded
+    self.radius = radius
+    self.activeEndPixelPos = [0,0]
+    self.inactiveEndPixelPos = [0,0]
 
-    steps = endAngle - startAngle
-    heightstep = (endHeight-startHeight)/steps
-    stepsize = (endAngle-startAngle)/steps
-    height, angle = startHeight, startAngle
+    self.recompute()
+    self.render()
+
+  def recompute(self):
+    height, angle = self.startHeight, self.startAngle
     self.points3d = []
     self.points3dHD = []
     step = 0
+    steps = int((self.endAngle - self.startAngle) * self.radius/50)
+    # Avoid nasty divide-by-zero errors
+    steps = max(100, steps)
+    # Limit the number of samples to avoid lag
+    steps = min(2500, steps)
+    heightstep = (self.endHeight-self.startHeight)/steps
+    anglestep = (self.endAngle-self.startAngle)/steps
     # Sample points along the curve
-    while step < steps:
-      a = angle if rightHanded else (360.-angle)
-      x = cos(a*(pi/180.))*radius + center[0]
-      y = sin(a*(pi/180.))*radius + center[1]
-      z = height + center[2]
+    for step in range(steps):
+      a = angle if self.rightHanded else (360.-angle)
+      x = cos(a*(pi/180.))*self.radius
+      y = sin(a*(pi/180.))*self.radius
+      z = height
       # Enable drawing in low and high resolution
       self.points3dHD.append((x,y,z))
       # Ensure that the first and last point are in the low res samples
       if step % 10 == 0 or step == steps-1:
         self.points3d.append((x,y,z))
-      angle += stepsize
+      angle += anglestep
       height += heightstep
-      step += 1
     self.activeEnd = 0
-    self.activeEndPixelPos = (0,0)
-    self.render()
+
+  def getEndPoint3d(self, getActiveEnd):
+    return self.points3d[0] if (self.activeEnd==0 and getActiveEnd) or  \
+                               (self.activeEnd==1 and not getActiveEnd) \
+                            else self.points3d[-1]
+
+  def setEndPos3d(self, newPos, setActiveEnd):
+    endIndexInPoints3d = 0 if (self.activeEnd==0 and setActiveEnd) or  \
+                              (self.activeEnd==1 and not setActiveEnd) \
+                           else -1
+    hDelta = newPos[2] - self.points3d[endIndexInPoints3d][2]
+    if setActiveEnd:
+      self.startHeight += .25*hDelta
+      self.endHeight   -= .5*hDelta
+      self.center[2]   += .5*hDelta
+    else:
+      self.startHeight -= .5*hDelta
+      self.endHeight   += .25*hDelta
+      self.center[2]   += .5*hDelta
+    self.recompute()
+    self.render(True)
+
+  def changeAngles(self, mouseRel, setActiveEnd):
+    if (self.activeEnd==0 and setActiveEnd) or  \
+       (self.activeEnd==1 and not setActiveEnd):
+      self.startAngle -= mouseRel[0]
+    else:
+      self.endAngle += mouseRel[0]
+    self.recompute()
+    self.render(True)
+
+  def moveTo(self, newPos):
+    super(HelixArc, self).moveTo(newPos)
+    self.render(True)
 
   def render(self, highdefinition=False):
     """
@@ -468,7 +528,7 @@ class HelixArc(PathPiece):
     pixels = []
     for p in points:
       px, py = project3dToPixelPosition(p, (0,0))
-      pixels.append((px,py))
+      pixels.append(((px,py), p[2]+self.center[2]))
       minx=min(minx,px)
       miny=min(miny,py)
       maxx=max(maxx,px)
@@ -494,35 +554,38 @@ class HelixArc(PathPiece):
 
     # Draw sample points, using Wu-style antialiasing
     # NOTE that AA is performed using only the alpha channel!
-    for p in pixels:
+    for p, z in pixels:
+      # Color pixels that are "below" the (z=0)-plane differently
+      drawcolor = self.color if z >= 0 \
+                             else (127,127,255)
       xint, xfrac = divmod(p[0], 1)
       yint, yfrac = divmod(p[1], 1)
 
       if 0 <= int(xint)-int(minx)+pad < WINDOW_SIZE[0] and \
          0 <= int(yint)-int(miny)+pad < WINDOW_SIZE[1]:
         c = sf.get_at((int(xint)-int(minx)+pad,int(yint)-int(miny)+pad))
-        c.r, c.g, c.b = self.color
+        c.r, c.g, c.b = drawcolor
         c.a=max(c.a,int(255*(1.-xfrac)*(1.-yfrac)))
         sf.set_at((int(xint)-int(minx)+pad,int(yint)-int(miny)+pad),c)
 
       if 0 <= int(xint)+1-int(minx)+pad < WINDOW_SIZE[0] and \
          0 <= int(yint)-int(miny)+pad < WINDOW_SIZE[1]:
         c = sf.get_at((int(xint)+1-int(minx)+pad,int(yint)-int(miny)+pad))
-        c.r, c.g, c.b = self.color
+        c.r, c.g, c.b = drawcolor
         c.a=max(c.a,int(255*(xfrac)*(1.-yfrac)))
         sf.set_at((int(xint)+1-int(minx)+pad,int(yint)-int(miny)+pad),c)
 
       if 0 <= int(xint)-int(minx)+pad < WINDOW_SIZE[0] and \
          0 <= int(yint)+1-int(miny)+pad < WINDOW_SIZE[1]:
         c = sf.get_at((int(xint)-int(minx)+pad,int(yint)+1-int(miny)+pad))
-        c.r, c.g, c.b = self.color
+        c.r, c.g, c.b = drawcolor
         c.a=max(c.a,int(255*(1.-xfrac)*(yfrac)))
         sf.set_at((int(xint)-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
 
       if 0 <= int(xint)+1-int(minx)+pad < WINDOW_SIZE[0] and \
          0 <= int(yint)+1-int(miny)+pad < WINDOW_SIZE[1]:
         c = sf.get_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad))
-        c.r, c.g, c.b = self.color
+        c.r, c.g, c.b = drawcolor
         c.a=max(c.a,int(255*(xfrac)*(yfrac)))
         sf.set_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
 
@@ -543,8 +606,7 @@ class HelixArc(PathPiece):
       pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
       ppos = project3dToPixelPosition([i+j for i,j in zip(pos,self.center)])
       self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
-                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
-      global markring, markdot
+                                  int(ppos[1])-CLICK_TOLERANCE_RADIUS)
       screen.blit(markring, self.activeEndPixelPos)
       screen.blit(markdot, self.activeEndPixelPos)
       screen.blit(markring, self.inactiveEndPixelPos)
@@ -559,7 +621,6 @@ class HelixArc(PathPiece):
 
 def getObjectByName(name):
   "Identify objects having unique names"
-  global objectsList
   result = [o for o in objectsList if o.name==name]
   if not result:
     raise IndexError('Objectslist contains no object named "%s"!' % name)
@@ -569,7 +630,6 @@ def getObjectByName(name):
 
 def getObjectsByClass(cls):
   "Identify objects by their class"
-  global objectsList
   result = [o for o in objectsList if isinstance(o, cls)]
   if not result:
     raise IndexError('Objectslist contains no object of class "%s"!' % cls.__name__)
@@ -750,7 +810,6 @@ def selectObjects(obj=None):
 
 
 def discardDeprecatedSelections(rect):
-  global selectedObjects
   for o in selectedObjects:
     if not o.inRect(rect):
       deselectObjects(o)
@@ -765,7 +824,7 @@ def drawHelpDebugInfoMessages(screen, rerender=False,
            functionality.
            DO NOT set them manually or use them in a function call!
   """
-  global selectedObjects, messageQueue, messageQueueChange
+  global messageQueueChange
 
   for so in selectedObjects:
     pos = so.center
@@ -903,18 +962,18 @@ def main():
     tmp = pygame.font.SysFont(None, 20).render(v, True, (0,0,0), (255,255,255))
     TOOLTIP_SURFACEOBJECTS[k] = tmp
 
-  boxSelectionInProgress = False
-  boxStartPoint = (0, 0)
-
   # How far the mouse has travelled with a button down, used to distinguish
   # between "click" and "drag" actions
   dragManhattanDistance = 0
-  # Prevents "slipping" off GUI buttons into dragging mode
-  dragStartedOnGUI = False
   # Mouse status saved from previous timetick
   lmbLastTick = mmbLastTick = rmbLastTick = False
   # Used for moving objects
-  dragStartedOnSelectedObject = False
+  boxSelectionInProgress = dragStartedOnGUI \
+                         = dragStartedOnSelectedObject \
+                         = dragStartedOnActiveEnd \
+                         = dragStartedOnInactiveEnd \
+                         = False
+  boxStartPoint = (0, 0)
 
   # Print info and debugging text?
   printDebug = False
@@ -973,7 +1032,9 @@ def main():
        dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD and \
        not boxSelectionInProgress and \
        not dragStartedOnGUI and \
-       not dragStartedOnSelectedObject:
+       not dragStartedOnSelectedObject and \
+       not dragStartedOnActiveEnd and \
+       not dragStartedOnInactiveEnd:
       deselectObjects()
       boxSelectionInProgress = True
       boxStartPoint = pygame.mouse.get_pos()
@@ -1011,11 +1072,22 @@ def main():
                 o.activate()
                 o.clickAction()
             if not GUIwasClicked:
-              for so in selectedObjects:
-                if so.cursorOnObject(mousePos):
+              if len(selectedObjects)==1 and selectedObjects[0].cursorOnObject():
+                so = selectedObjects[0]
+                if so.cursorOnEnd(mousePos):
+                  dragStartedOnActiveEnd = True
+                elif so.cursorOnEnd(mousePos, False):
+                  dragStartedOnInactiveEnd = True
+                else:
                   dragStartedOnSelectedObject = True
                   infoMessage("dragStartedOnSelectedObject")
-                  break
+                break
+              else:
+                for so in selectedObjects:
+                  if so.cursorOnObject(mousePos):
+                    dragStartedOnSelectedObject = True
+                    infoMessage("dragStartedOnSelectedObject")
+                    break
         # Button 4 is MOUSE WHEEL UP
         elif event.button == 4:
           compute_projection_parameters(azimuth, elevation, zoom*ZOOM_IN_SPEED**2)
@@ -1028,7 +1100,11 @@ def main():
           raise Exception('Unknown mouse button %d!' % event.button)
       # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
-        if lmbLastTick and not boxSelectionInProgress and not dragStartedOnGUI:
+        if lmbLastTick and \
+           not boxSelectionInProgress and \
+           not dragStartedOnGUI and \
+           not dragStartedOnActiveEnd and \
+           not dragStartedOnInactiveEnd:
           deselectObjects()
         # Only "click"-select objects (box selection is done later)
         if not boxSelectionInProgress:
@@ -1048,9 +1124,11 @@ def main():
           deselectObjects()
         # Reset drag distance
         dragManhattanDistance = 0
-        boxSelectionInProgress = False
-        dragStartedOnGUI = False
-        dragStartedOnSelectedObject = False
+        boxSelectionInProgress = dragStartedOnGUI \
+                               = dragStartedOnSelectedObject \
+                               = dragStartedOnActiveEnd \
+                               = dragStartedOnInactiveEnd \
+                               = False
 
     # Check current status of keyboard keys
     pressedKeys = pygame.key.get_pressed()
@@ -1139,19 +1217,57 @@ def main():
     except:
       for so in selectedObjects: print so"""
 
-    # Move selected objects per mouse
-    if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD and \
-       dragStartedOnSelectedObject:
-      # Motion along z-axis
-      if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
-        for so in selectedObjects:
-          so.moveTo([so.center[0],
-                     so.center[1],
-                     so.center[2]-mouseRelativeMotionThisTick[1]])
-      # Motion along z=0 plane
-      else:
-        for so in selectedObjects:
-          so.moveByPixelOffset(mouseRelativeMotionThisTick)
+    # Move things using the mouse
+    if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
+      # Move selected object(s)
+      if dragStartedOnSelectedObject:
+        # Motion along z-axis
+        if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+          for so in selectedObjects:
+            so.moveTo([so.center[0],
+                       so.center[1],
+                       so.center[2]-mouseRelativeMotionThisTick[1]])
+        # Motion along (z=0)-plane
+        else:
+          for so in selectedObjects:
+            so.moveByPixelOffset(mouseRelativeMotionThisTick)
+      # Move the ends of a path piece using the mouse
+      elif dragStartedOnActiveEnd:
+        so = selectedObjects[0]
+        # Change a HelixArc's RADIUS using the SHIFT+CTRL keys
+        if (pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]) and \
+           (pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]):
+          so.radius += mouseRelativeMotionThisTick[0]
+          so.recompute()
+          so.render(True)
+        # Change a HelixArc's HEIGHT using the SHIFT key
+        elif pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+          pos = so.getEndPoint3d(True)
+          pos = [pos[0],
+                 pos[1],
+                 pos[2]-mouseRelativeMotionThisTick[1]]
+          so.setEndPos3d(pos, True)
+        # Change a HelixArc's LENGTH using the CTRL key
+        elif pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
+          so.changeAngles(mouseRelativeMotionThisTick, True)
+      elif dragStartedOnInactiveEnd:
+        so = selectedObjects[0]
+        # Change a HelixArc's RADIUS using the SHIFT+CTRL keys
+        if (pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]) and \
+           (pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]):
+          so.radius += mouseRelativeMotionThisTick[0]
+          so.recompute()
+          so.render(True)
+        # Change a HelixArc's HEIGHT using the SHIFT key
+        elif pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+          pos = so.getEndPoint3d(False)
+          pos = [pos[0],
+                 pos[1],
+                 pos[2]-mouseRelativeMotionThisTick[1]]
+          so.setEndPos3d(pos, False)
+        # Change a HelixArc's LENGTH using the CTRL key
+        elif pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
+          so.changeAngles(mouseRelativeMotionThisTick, False)
 
     # If the camera has changed, the background graphic has to be re-rendered
     if rerender:
@@ -1203,8 +1319,8 @@ def main():
       pygame.draw.lines(selectionBox, (0, 0, 255), True, pointslist, 1)
       selectionBox.set_alpha(100)
       selectionBoxRect = selectionBox.get_rect()
-      selectionBoxRect.center = (.5*(boxStartPoint[0]+boxEndPoint[0]),
-                                 .5*(boxStartPoint[1]+boxEndPoint[1]))
+      selectionBoxRect.center = [.5*(boxStartPoint[0]+boxEndPoint[0]),
+                                 .5*(boxStartPoint[1]+boxEndPoint[1])]
       screen.blit(selectionBox, selectionBoxRect)
       # deselectObjects()
       discardDeprecatedSelections(selectionBoxRect)
