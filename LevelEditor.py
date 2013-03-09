@@ -109,7 +109,8 @@ messageQueueChange = False
 idleClick = True
 
 
-TOOLTIP_TEXTS = {"dummy":
+TOOLTIP_TEXTS = {
+                 "dummy":
                   "<<<TOOLTIP_TEXTS[CLASS_NAME_AS_STRING]>>>",
                  "AddStraightButton":
                   "Add a straight path piece",
@@ -120,7 +121,10 @@ TOOLTIP_TEXTS = {"dummy":
                  "AppendHelixArcButton":
                   "Append a curved path piece to a selected path piece",
                  "ChangeActiveEndButton":
-                  "Switch between the active ends of a path piece"}
+                  "Switch between the active ends of a path piece",
+                 "DeleteObjectsButton":
+                  "Permanently delete all selected objects"
+                }
 TOOLTIP_SURFACEOBJECTS = {}
 
 #_______________________________________________________________________
@@ -403,6 +407,34 @@ class ChangeActiveEndButton(Button):
 
   def tooltip(self, screen, mousePos=None):
     super(ChangeActiveEndButton, self).tooltip(screen, mousePos, "ChangeActiveEndButton")
+
+
+class DeleteObjectsButton(Button):
+  def __init__(self, name="DeleteObjectsButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/deleteobjects.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/deleteobjectsClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/deleteobjectsHighlighted.png'.format(SCRIPT_PATH))
+    super(DeleteObjectsButton, self).__init__(name,
+                                                buttonRect,
+                                                img,
+                                                clickedImg,
+                                                highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(DeleteObjectsButton, self).clickAction()
+    except:
+      return None
+    if selectedObjects:
+      while selectedObjects:
+        deleteObject(selectedObjects[-1])
+
+  def tooltip(self, screen, mousePos=None):
+    super(DeleteObjectsButton, self).tooltip(screen, mousePos, "DeleteObjectsButton")
 
 
 class PathPiece(ClickRegisteringObject):
@@ -834,7 +866,8 @@ def render_background():
 def makeGUIButtons():
   """Initialize GUI buttons"""
   buttons = []
-  to_make = ((AddStraightButton, "addStraightButton",
+  to_make = (
+             (AddStraightButton, "addStraightButton",
                 (WINDOW_SIZE[0], 0)),
              (AppendStraightButton, "appendStraightButton",
                 (WINDOW_SIZE[0]-50, 0)),
@@ -843,7 +876,10 @@ def makeGUIButtons():
              (AppendHelixArcButton, "appendHelixArcButton",
                 (WINDOW_SIZE[0]-50, 50)),
              (ChangeActiveEndButton, "changeActiveEndButton",
-                (WINDOW_SIZE[0], 100)))
+                (WINDOW_SIZE[0], 100)),
+             (DeleteObjectsButton, "deleteObjectsButton",
+                (WINDOW_SIZE[0], 150))
+            )
 
   for buttonClass, name, (x,y) in to_make:
     newButton = buttonClass(name)
@@ -856,6 +892,7 @@ def makeGUIButtons():
   objectsList.extend(buttons)
   getObjectByName("appendStraightButton").disable()
   getObjectByName("appendHelixArcButton").disable()
+  getObjectByName("deleteObjectsButton").disable()
 
 
 
@@ -903,10 +940,19 @@ def selectObjects(obj=None):
       obj.select()
 
 
+
 def discardDeprecatedSelections(rect):
   for o in selectedObjects:
     if not o.inRect(rect):
       deselectObjects(o)
+
+
+
+
+def deleteObject(obj):
+  deselectObjects(obj)
+  obj.deselect()
+  objectsList.remove(obj)
 
 
 
@@ -1313,6 +1359,12 @@ def main():
     except:
       for so in selectedObjects: print so"""
 
+    ## Delete selected objects
+    if pressedKeys[pygame.K_DELETE] and selectedObjects:
+      if selectedObjects:
+        while selectedObjects:
+          deleteObject(selectedObjects[-1])
+
     ## Move things using the mouse
     if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
       # Move selected object(s)
@@ -1438,6 +1490,11 @@ def main():
       getObjectByName('appendStraightButton').enable()
       getObjectByName('appendHelixArcButton').enable()
       getObjectByName('changeActiveEndButton').enable()
+
+    if not selectedObjects:
+      getObjectByName('deleteObjectsButton').disable()
+    else:
+      getObjectByName('deleteObjectsButton').enable()
 
     # Draw GUI buttons
     for o in objectsList:
