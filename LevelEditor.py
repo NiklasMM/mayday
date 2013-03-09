@@ -115,6 +115,10 @@ TOOLTIP_TEXTS = {"dummy":
                   "Add a straight path piece",
                  "AppendStraightButton":
                   "Append a straight path piece to a selected path piece",
+                 "AddHelixArcButton":
+                  "Add a curved path piece",
+                 "AppendHelixArcButton":
+                  "Append a curved path piece to a selected path piece",
                  "ChangeActiveEndButton":
                   "Switch between the active ends of a path piece"}
 TOOLTIP_SURFACEOBJECTS = {}
@@ -136,12 +140,12 @@ class DisplayedObject(object):
     self.selected = False
 
   def moveTo(self, newPos):
-    self.center = newPos[:]
+    self.center = [i for i in newPos]
 
   def moveByOffset(self, offset):
     self.center = [i+j for i,j in zip(self.center, offset)]
 
-  def getActiveEndPoint3d(self):
+  def getEndPoint3d(self, getActiveEnd):
     return [0,0,0]
 
   def moveByPixelOffset(self, relativePixelMotion):
@@ -311,6 +315,65 @@ class AppendStraightButton(Button):
     super(AppendStraightButton, self).tooltip(screen, mousePos, "AppendStraightButton")
 
 
+class AddHelixArcButton(Button):
+  def __init__(self, name="AddHelixArcButton", buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/addhelixarc.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/addhelixarcClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/addhelixarcHighlighted.png'.format(SCRIPT_PATH))
+    super(AddHelixArcButton, self).__init__(name,
+                                            buttonRect,
+                                            img,
+                                            clickedImg,
+                                            highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(AddHelixArcButton, self).clickAction()
+    except:
+      return None
+    global objectsList
+    objectsList.append(HelixArc())
+    objectsList[-1].render(True)
+    infoMessage("HelixArc object added.")
+
+  def tooltip(self, screen, mousePos=None):
+    super(AddHelixArcButton, self).tooltip(screen, mousePos, "AddHelixArcButton")
+
+
+class AppendHelixArcButton(Button):
+  def __init__(self, name="AppendHelixArcButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/appendhelixarc.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/appendhelixarcClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/appendhelixarcHighlighted.png'.format(SCRIPT_PATH))
+    super(AppendHelixArcButton, self).__init__(name,
+                                               buttonRect,
+                                               img,
+                                               clickedImg,
+                                               highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(AppendHelixArcButton, self).clickAction()
+    except:
+      return None
+    if not selectedObjects:
+      infoMessage("must select a single path piece to append (none selected)")
+    elif len(selectedObjects) > 1:
+      infoMessage("must select a single path piece to append (%d selected)" % len(selectedObjects))
+    else:
+      infoMessage("I am not doing anything =(")
+
+  def tooltip(self, screen, mousePos=None):
+    super(AppendHelixArcButton, self).tooltip(screen, mousePos, "AppendHelixArcButton")
+
+
 class ChangeActiveEndButton(Button):
   def __init__(self, name="ChangeActiveEndButton",
                buttonRect=pygame.Rect(0,0,0,0),
@@ -357,11 +420,19 @@ class PathPiece(ClickRegisteringObject):
     return (mousePos[0]-CLICK_TOLERANCE_RADIUS-ppos[0])**2 + \
            (mousePos[1]-CLICK_TOLERANCE_RADIUS-ppos[1])**2   < CLICK_TOLERANCE_RADIUS**2-1
 
+  def noTuplesPlease(self):
+    """BUGFIX FUNCTION: Asserts that self.center is NOT a tuple"""
+    if isinstance(self.center, tuple):
+      logging.debug("CAUTION: %s.noTuplesPlease() fired!" % self.__class__.__name__)
+      self.center = [i for i in self.center]
+
 
 
 class Straight(PathPiece):
   def __init__(self,
-               startPoint3D=[0,0,0], endPoint3D=[0,0,0], color=(0,0,255)):
+               startPoint3D=[0,0,0],
+               endPoint3D=[0,0,0],
+               color=(0,0,255)):
     super(Straight, self).__init__()
     self.startPoint = startPoint3D
     self.endPoint = endPoint3D
@@ -380,21 +451,43 @@ class Straight(PathPiece):
 
   def render(self):
     """Call after viewing direction or zoom change to rerender object"""
+
+    #gradient = [i-j for i,j in zip(self.startPoint, self.endPoint)]
+    #print "gradient: ", gradient
+
     positions = (project3dToPixelPosition(self.startPoint, ORIGIN),
                  project3dToPixelPosition(self.endPoint, ORIGIN))
+    colors = (self.color)
     min_x = int(min([p[0] for p in positions]))
     max_x = int(max([p[0] for p in positions]))
     min_y = int(min([p[1] for p in positions]))
     max_y = int(max([p[1] for p in positions]))
     start = positions[0]
     end = positions[1]
-    linecenter = project3dToPixelPosition(((self.endPoint[0]+self.startPoint[0])/2,
-                           (self.endPoint[1]+self.startPoint[1])/2,
-                           (self.endPoint[2]+self.startPoint[2])/2), ORIGIN)
     # Safely overestimate the needed area (pad to avoid clipping lines)
     tempSurfaceObj = pygame.Surface((max_x-min_x+3*CLICK_TOLERANCE_RADIUS,
                                      max_y-min_y+3*CLICK_TOLERANCE_RADIUS))
     tempSurfaceObj = tempSurfaceObj.convert_alpha()
+    tempSurfaceObjCenter = [tempSurfaceObj.get_size()[0]//2,
+                            tempSurfaceObj.get_size()[1]//2]
+
+    linecenter = project3dToPixelPosition(((self.endPoint[0]+self.startPoint[0])/2,
+                           (self.endPoint[1]+self.startPoint[1])/2,
+                           (self.endPoint[2]+self.startPoint[2])/2), ORIGIN)
+    pygame.draw.aaline(tempSurfaceObj, self.color,
+                       (positions[0][0]-linecenter[0]+tempSurfaceObjCenter[0],
+                        positions[0][1]-linecenter[1]+tempSurfaceObjCenter[1]),
+                       (positions[1][0]-linecenter[0]+tempSurfaceObjCenter[0],
+                        positions[1][1]-linecenter[1]+tempSurfaceObjCenter[1]))
+
+    # Repair the alpha values (transparency) at antialiasing border
+    pixels = pygame.PixelArray(tempSurfaceObj)
+    pixels.replace(pygame.Color(0, 0, 0, 255), pygame.Color(0, 0, 0, 0))
+    del pixels
+    tempSurfaceObjRect = tempSurfaceObj.get_rect()
+    tempSurfaceObjRect.center = linecenter
+    self.surfaceObj = tempSurfaceObj
+    self.rect = tempSurfaceObjRect
 
     # Mark the active end
     pos  = self.startPoint if self.activeEnd == 0 else self.endPoint
@@ -406,24 +499,19 @@ class Straight(PathPiece):
     self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
-    tempSurfaceObjCenter = [tempSurfaceObj.get_size()[0]//2,
-                            tempSurfaceObj.get_size()[1]//2]
-    pygame.draw.aaline(tempSurfaceObj, self.color,
-                       (positions[0][0]-linecenter[0]+tempSurfaceObjCenter[0],
-                        positions[0][1]-linecenter[1]+tempSurfaceObjCenter[1]),
-                       (positions[1][0]-linecenter[0]+tempSurfaceObjCenter[0],
-                        positions[1][1]-linecenter[1]+tempSurfaceObjCenter[1]))
-    # Repair the alpha values (transparency) at antialiasing border
-    pixels = pygame.PixelArray(tempSurfaceObj)
-    pixels.replace(pygame.Color(0, 0, 0, 255), pygame.Color(0, 0, 0, 0))
-    del pixels
-    tempSurfaceObjRect = tempSurfaceObj.get_rect()
-    tempSurfaceObjRect.center = linecenter
-    self.surfaceObj = tempSurfaceObj
-    self.rect = tempSurfaceObjRect
+  def getEndPoint3d(self, getActiveEnd):
+    return self.startPoint if (self.activeEnd==0 and getActiveEnd) or  \
+                              (self.activeEnd==1 and not getActiveEnd) \
+                           else self.endPoint
 
-  def getActiveEndPoint3d(self):
-    return self.startPoint if self.activeEnd==0 else self.endPoint
+  def setEndPos3d(self, newPos, setActiveEnd):
+    self.noTuplesPlease()
+    if (self.activeEnd==0 and setActiveEnd) or  \
+       (self.activeEnd==1 and not setActiveEnd):
+      self.startPoint = [i for i in newPos]
+    else:
+      self.endPoint = [i for i in newPos]
+    self.render()
 
   def draw(self, screen):
     # Mark the active end
@@ -462,7 +550,7 @@ class HelixArc(PathPiece):
     self.points3d = []
     self.points3dHD = []
     step = 0
-    steps = int((self.endAngle - self.startAngle) * self.radius/50)
+    steps = int((self.endAngle - self.startAngle) * abs(self.radius)/50)
     # Avoid nasty divide-by-zero errors
     steps = max(100, steps)
     # Limit the number of samples to avoid lag
@@ -490,6 +578,7 @@ class HelixArc(PathPiece):
                             else self.points3d[-1]
 
   def setEndPos3d(self, newPos, setActiveEnd):
+    self.noTuplesPlease()
     endIndexInPoints3d = 0 if (self.activeEnd==0 and setActiveEnd) or  \
                               (self.activeEnd==1 and not setActiveEnd) \
                            else -1
@@ -749,8 +838,12 @@ def makeGUIButtons():
                 (WINDOW_SIZE[0], 0)),
              (AppendStraightButton, "appendStraightButton",
                 (WINDOW_SIZE[0]-50, 0)),
+             (AddHelixArcButton, "addHelixArcButton",
+                (WINDOW_SIZE[0], 50)),
+             (AppendHelixArcButton, "appendHelixArcButton",
+                (WINDOW_SIZE[0]-50, 50)),
              (ChangeActiveEndButton, "changeActiveEndButton",
-                (WINDOW_SIZE[0], 50)))
+                (WINDOW_SIZE[0], 100)))
 
   for buttonClass, name, (x,y) in to_make:
     newButton = buttonClass(name)
@@ -762,6 +855,7 @@ def makeGUIButtons():
   global objectsList
   objectsList.extend(buttons)
   getObjectByName("appendStraightButton").disable()
+  getObjectByName("appendHelixArcButton").disable()
 
 
 
@@ -1107,7 +1201,9 @@ def main():
            not dragStartedOnInactiveEnd:
           deselectObjects()
         # Only "click"-select objects (box selection is done later)
-        if not boxSelectionInProgress:
+        if not boxSelectionInProgress and \
+           not dragStartedOnActiveEnd and \
+           not dragStartedOnInactiveEnd:
           for o in objectsList:
             if o.cursorOnObject(mousePos) and not isinstance(o, Button):
               selectObjects(o)
@@ -1217,7 +1313,7 @@ def main():
     except:
       for so in selectedObjects: print so"""
 
-    # Move things using the mouse
+    ## Move things using the mouse
     if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
       # Move selected object(s)
       if dragStartedOnSelectedObject:
@@ -1231,43 +1327,41 @@ def main():
         else:
           for so in selectedObjects:
             so.moveByPixelOffset(mouseRelativeMotionThisTick)
-      # Move the ends of a path piece using the mouse
-      elif dragStartedOnActiveEnd:
+      # Manipulate a single selected object
+      elif len(selectedObjects)==1:
         so = selectedObjects[0]
-        # Change a HelixArc's RADIUS using the SHIFT+CTRL keys
-        if (pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]) and \
-           (pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]):
-          so.radius += mouseRelativeMotionThisTick[0]
-          so.recompute()
-          so.render(True)
-        # Change a HelixArc's HEIGHT using the SHIFT key
-        elif pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
-          pos = so.getEndPoint3d(True)
-          pos = [pos[0],
-                 pos[1],
-                 pos[2]-mouseRelativeMotionThisTick[1]]
-          so.setEndPos3d(pos, True)
-        # Change a HelixArc's LENGTH using the CTRL key
-        elif pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
-          so.changeAngles(mouseRelativeMotionThisTick, True)
-      elif dragStartedOnInactiveEnd:
-        so = selectedObjects[0]
-        # Change a HelixArc's RADIUS using the SHIFT+CTRL keys
-        if (pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]) and \
-           (pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]):
-          so.radius += mouseRelativeMotionThisTick[0]
-          so.recompute()
-          so.render(True)
-        # Change a HelixArc's HEIGHT using the SHIFT key
-        elif pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
-          pos = so.getEndPoint3d(False)
-          pos = [pos[0],
-                 pos[1],
-                 pos[2]-mouseRelativeMotionThisTick[1]]
-          so.setEndPos3d(pos, False)
-        # Change a HelixArc's LENGTH using the CTRL key
-        elif pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
-          so.changeAngles(mouseRelativeMotionThisTick, False)
+        # Move the ends of a path piece using the mouse
+        ## HelixArcs
+        if isinstance(so, HelixArc):
+          if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
+            # Change a HelixArc's RADIUS using the SHIFT+CTRL keys
+            if (pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]) and \
+               (pressedKeys[pygame.K_LCTRL]  or pressedKeys[pygame.K_RCTRL]):
+              so.radius += mouseRelativeMotionThisTick[0]
+              so.recompute()
+              so.render(True)
+            # Change a HelixArc's HEIGHT using the SHIFT key
+            elif pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+              pos = so.getEndPoint3d(dragStartedOnActiveEnd)
+              pos = [pos[0],
+                     pos[1],
+                     pos[2]-mouseRelativeMotionThisTick[1]]
+              so.setEndPos3d(pos, dragStartedOnActiveEnd)
+            # Change a HelixArc's LENGTH using the CTRL key
+            elif pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
+              so.changeAngles(mouseRelativeMotionThisTick,
+                              dragStartedOnActiveEnd)
+        ## Straights
+        """elif isinstance(so, Straight):
+          if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
+            # Move endpoint along z-axis
+            if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+              pos = so.getEndPoint3d(dragStartedOnActiveEnd)
+              pos = [pos[0],
+                     pos[1],
+                     pos[2]-mouseRelativeMotionThisTick[1]]
+              so.setEndPos3d(pos, dragStartedOnActiveEnd)"""
+
 
     # If the camera has changed, the background graphic has to be re-rendered
     if rerender:
@@ -1338,9 +1432,11 @@ def main():
     # TODO refactor into Button method?
     if not selectedObjects or len(selectedObjects) != 1:
       getObjectByName('appendStraightButton').disable()
+      getObjectByName('appendHelixArcButton').disable()
       getObjectByName('changeActiveEndButton').disable()
     else:
       getObjectByName('appendStraightButton').enable()
+      getObjectByName('appendHelixArcButton').enable()
       getObjectByName('changeActiveEndButton').enable()
 
     # Draw GUI buttons
