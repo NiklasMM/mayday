@@ -523,11 +523,11 @@ class Straight(PathPiece):
 
     # Mark the active end
     pos  = self.startPoint if self.activeEnd == 0 else self.endPoint
-    ppos = project3dToPixelPosition(pos, ORIGIN)
+    ppos = project3dToPixelPosition(pos)
     self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                               int(ppos[1])-CLICK_TOLERANCE_RADIUS)
     pos  = self.endPoint if self.activeEnd == 0 else self.startPoint
-    ppos = project3dToPixelPosition(pos, ORIGIN)
+    ppos = project3dToPixelPosition(pos)
     self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
@@ -543,6 +543,7 @@ class Straight(PathPiece):
       self.startPoint = [i for i in newPos]
     else:
       self.endPoint = [i for i in newPos]
+    self.center = [.5*(i+j) for i,j in zip(self.startPoint, self.endPoint)]
     self.render()
 
   def draw(self, screen):
@@ -808,12 +809,12 @@ def unprojectPixelTo3dPosition(p, origin=ORIGIN, height=0.):
   return point3d
 
 
-def drawHelpLines(pos3D, screen):
+def drawHelpLines(pos3D, screen, toOrigin=True):
   """Draw 3D orientation help lines"""
-  positions = (project3dToPixelPosition((0, 0, 0)),
+  positions = [project3dToPixelPosition((0, 0, 0)),
                project3dToPixelPosition((pos3D[0], 0, 0)),
                project3dToPixelPosition((pos3D[0], pos3D[1], 0)),
-               project3dToPixelPosition(pos3D))
+               project3dToPixelPosition(pos3D)]
   min_x = int(min([p[0] for p in positions]))
   max_x = int(max([p[0] for p in positions]))
   min_y = int(min([p[1] for p in positions]))
@@ -831,9 +832,14 @@ def drawHelpLines(pos3D, screen):
   line_anchors = [tempSurfaceObjCenter]
   # Draw a path from the origin along the 3 dimensions
   for i in range(3):
+    color = (0, 0, 0, 0)
+    if toOrigin:
+      color = (0, 0, 127)
+    else:
+      color = (127, 127, 127)
     line_anchors.append((positions[i+1][0]-start[0]+tempSurfaceObjCenter[0],
                          positions[i+1][1]-start[1]+tempSurfaceObjCenter[1]))
-    pygame.draw.aaline(tempSurfaceObj, (0,0,127),
+    pygame.draw.aaline(tempSurfaceObj, color,
                        line_anchors[i], line_anchors[i+1])
   # Repair the alpha values (transparency) at antialiasing border
   pixels = pygame.PixelArray(tempSurfaceObj)
@@ -859,8 +865,6 @@ def render_background():
                        project3dToPixelPosition((-500, (i-10)*50, 0)),
                        project3dToPixelPosition(( 500, (i-10)*50, 0)))
   return BGSurfaceObj
-
-
 
 
 def makeGUIButtons():
@@ -1122,7 +1126,8 @@ def main():
   framesWithoutRerendering = 0
 
   ### DEBUG
-  objectsList.append(HelixArc())
+  objectsList.append(Straight((-20,-20,-20),(20,50,20)))
+  selectObjects(objectsList[-1])
 
   # Prerender font object
   toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.', True, (0,0,0))
@@ -1404,7 +1409,7 @@ def main():
               so.changeAngles(mouseRelativeMotionThisTick,
                               dragStartedOnActiveEnd)
         ## Straights
-        """elif isinstance(so, Straight):
+        elif isinstance(so, Straight):
           if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
             # Move endpoint along z-axis
             if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
@@ -1412,7 +1417,17 @@ def main():
               pos = [pos[0],
                      pos[1],
                      pos[2]-mouseRelativeMotionThisTick[1]]
-              so.setEndPos3d(pos, dragStartedOnActiveEnd)"""
+              so.setEndPos3d(pos, dragStartedOnActiveEnd)
+            #elif pressedKeys[pygame.K_RCTRL] or pressedKeys[pygame.K_LCTRL]:
+            else:
+              pos = so.getEndPoint3d(dragStartedOnActiveEnd)
+              z = pos[2]
+              ppos = project3dToPixelPosition(pos)
+              ppos[0] += mouseRelativeMotionThisTick[0]
+              ppos[1] += mouseRelativeMotionThisTick[1]
+              pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+              so.setEndPos3d(pos, dragStartedOnActiveEnd)
+
 
 
     # If the camera has changed, the background graphic has to be re-rendered
@@ -1440,6 +1455,9 @@ def main():
     # Draw help lines to ease positioning selected objects in 3D space
     for so in selectedObjects:
       drawHelpLines(so.center, screen)
+      if isinstance(so, Straight):
+        drawHelpLines(so.getEndPoint3d(True), screen, False)
+        drawHelpLines(so.getEndPoint3d(False), screen, False)
 
     # Print helpful information and debugging messages (CPU intensive!)
     textRect = toggleDebugTextObj.get_rect()
