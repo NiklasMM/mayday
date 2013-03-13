@@ -51,7 +51,7 @@ from math import pi, sin, cos
 import logging, sys, os
 from collections import deque
 
-SCRIPT_PATH = '/opt/mayday'#os.path.dirname(__file__)
+SCRIPT_PATH = os.path.dirname(__file__)
 
 WINDOW_SIZE = (800, 600)
 ORIGIN = [WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2]
@@ -1458,6 +1458,15 @@ def main():
       if isinstance(so, Straight):
         drawHelpLines(so.getEndPoint3d(True), screen, False)
         drawHelpLines(so.getEndPoint3d(False), screen, False)
+      elif isinstance(so, HelixArc):
+        drawHelpLines([i+j for i,j in zip(so.getEndPoint3d(True),
+                                          so.center)],
+                      screen,
+                      False)
+        drawHelpLines([i+j for i,j in zip(so.getEndPoint3d(False),
+                                          so.center)],
+                      screen,
+                      False)
 
     # Print helpful information and debugging messages (CPU intensive!)
     textRect = toggleDebugTextObj.get_rect()
