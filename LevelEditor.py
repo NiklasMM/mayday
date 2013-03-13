@@ -561,7 +561,7 @@ class HelixArc(PathPiece):
 
   def __init__(self,
                startHeight=-40., endHeight=40.,
-               startAngle=0., endAngle=720.,
+               startAngle=0., endAngle=360.,
                radius=50., center=[0,0,0],
                rightHanded=True, color=(0,0,255)):
     super(HelixArc, self).__init__()
@@ -574,7 +574,9 @@ class HelixArc(PathPiece):
     self.radius = radius
     self.activeEndPixelPos = [0,0]
     self.inactiveEndPixelPos = [0,0]
-
+    ## The gamma value controls the gradient of the HelixArc's steepness
+    #  It's called "gamma" because it follows a gamma correction-style curve
+    self.gamma = 1.
     self.recompute()
     self.render()
 
@@ -595,7 +597,11 @@ class HelixArc(PathPiece):
       a = angle if self.rightHanded else (360.-angle)
       x = cos(a*(pi/180.))*self.radius
       y = sin(a*(pi/180.))*self.radius
-      z = height
+      # Gamma correction-style height recomputation (keeps range)
+      z = self.startHeight + \
+            (self.endHeight-self.startHeight) * \
+            ((height-self.startHeight)/(self.endHeight-self.startHeight)) ** \
+              (1./self.gamma)
       # Enable drawing in low and high resolution
       self.points3dHD.append((x,y,z))
       # Ensure that the first and last point are in the low res samples
@@ -1126,8 +1132,7 @@ def main():
   framesWithoutRerendering = 0
 
   ### DEBUG
-  objectsList.append(Straight((-20,-20,-20),(20,50,20)))
-  selectObjects(objectsList[-1])
+  objectsList.append(HelixArc())
 
   # Prerender font object
   toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.', True, (0,0,0))
@@ -1369,6 +1374,20 @@ def main():
       if selectedObjects:
         while selectedObjects:
           deleteObject(selectedObjects[-1])
+
+    # Change a HelixArc's curve gamma
+    if len(selectedObjects)==1 and isinstance(selectedObjects[0], HelixArc):
+      so = selectedObjects[0]
+      if pressedKeys[pygame.K_m]:
+        so.recompute()
+        so.render(True)
+        so.gamma *= 1.05
+        so.gamma = max(.05, min(9., so.gamma))
+      elif pressedKeys[pygame.K_n]:
+        so.recompute()
+        so.render(True)
+        so.gamma *= .96
+        so.gamma = max(.05, min(9., so.gamma))
 
     ## Move things using the mouse
     if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
