@@ -16,6 +16,8 @@
 # - undo/redo
 # - while moving objects: hold CTRL to snap to grid
 # - path pieces cast shadows onto the ground
+# - save / load sessions
+# - export finished levels
 #
 # TODO fixes
 # - DONE HelixArc drawing is still wrong
@@ -53,7 +55,7 @@ from collections import deque
 
 SCRIPT_PATH = os.path.dirname(__file__)
 
-WINDOW_SIZE = (800, 600)
+WINDOW_SIZE = [800, 600]
 ORIGIN = [WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2]
 AZIMUTH_ANGULAR_SPEED = 0.05
 ELEVATION_ANGULAR_SPEED = 0.05
@@ -123,7 +125,15 @@ TOOLTIP_TEXTS = {
                  "ChangeActiveEndButton":
                   "Switch between the active ends of a path piece",
                  "DeleteObjectsButton":
-                  "Permanently delete all selected objects"
+                  "Permanently delete all selected objects",
+                 "LoadSceneButton":
+                  "Load an existing scene from disk (existing scene will be lost!)",
+                 "SaveSceneButton":
+                  "Save the current scene to disk",
+                 "NewSceneButton":
+                  "Create a new, blank scene (current scene will be lost!)",
+                 "ExitProgramButton":
+                  "Exit the program (unsaved changes will be lost!)"
                 }
 TOOLTIP_SURFACEOBJECTS = {}
 
@@ -256,7 +266,10 @@ class Button(ClickRegisteringObject):
       mousePos = pygame.mouse.get_pos()
     tooltipSurfaceObj = TOOLTIP_SURFACEOBJECTS[key]
     tmpTooltipTextObjRect = tooltipSurfaceObj.get_rect()
-    tmpTooltipTextObjRect.topright = (mousePos[0]-5, mousePos[1]+5)
+    if mousePos[0] <= WINDOW_SIZE[0]//2:
+      tmpTooltipTextObjRect.topleft = (mousePos[0]+15, mousePos[1]+5)
+    else:
+      tmpTooltipTextObjRect.topright = (mousePos[0]-5, mousePos[1]+5)
     screen.blit(tooltipSurfaceObj, tmpTooltipTextObjRect)
 
 
@@ -437,6 +450,115 @@ class DeleteObjectsButton(Button):
     super(DeleteObjectsButton, self).tooltip(screen, mousePos, "DeleteObjectsButton")
 
 
+
+class NewSceneButton(Button):
+  def __init__(self, name="NewSceneButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/newScene.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/newSceneClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/newSceneHighlighted.png'.format(SCRIPT_PATH))
+    super(NewSceneButton, self).__init__(name,
+                                                buttonRect,
+                                                img,
+                                                clickedImg,
+                                                highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(NewSceneButton, self).clickAction()
+    except:
+      return None
+    print "lol no action"
+
+  def tooltip(self, screen, mousePos=None):
+    super(NewSceneButton, self).tooltip(screen, mousePos, "NewSceneButton")
+
+
+
+class LoadSceneButton(Button):
+  def __init__(self, name="LoadSceneButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/loadScene.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/loadSceneClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/loadSceneHighlighted.png'.format(SCRIPT_PATH))
+    super(LoadSceneButton, self).__init__(name,
+                                                buttonRect,
+                                                img,
+                                                clickedImg,
+                                                highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(LoadSceneButton, self).clickAction()
+    except:
+      return None
+    print "lol no action"
+
+  def tooltip(self, screen, mousePos=None):
+    super(LoadSceneButton, self).tooltip(screen, mousePos, "LoadSceneButton")
+
+
+
+class SaveSceneButton(Button):
+  def __init__(self, name="SaveSceneButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/saveScene.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/saveSceneClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/saveSceneHighlighted.png'.format(SCRIPT_PATH))
+    super(SaveSceneButton, self).__init__(name,
+                                                buttonRect,
+                                                img,
+                                                clickedImg,
+                                                highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(SaveSceneButton, self).clickAction()
+    except:
+      return None
+    print "lol no action"
+
+  def tooltip(self, screen, mousePos=None):
+    super(SaveSceneButton, self).tooltip(screen, mousePos, "SaveSceneButton")
+
+
+
+class ExitProgramButton(Button):
+  def __init__(self, name="ExitProgramButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/exitProgram.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/exitProgramClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/exitProgramHighlighted.png'.format(SCRIPT_PATH))
+    super(ExitProgramButton, self).__init__(name,
+                                                buttonRect,
+                                                img,
+                                                clickedImg,
+                                                highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(ExitProgramButton, self).clickAction()
+    except:
+      return None
+    pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+  def tooltip(self, screen, mousePos=None):
+    super(ExitProgramButton, self).tooltip(screen, mousePos, "ExitProgramButton")
+
+
+
 class PathPiece(ClickRegisteringObject):
   def __init__(self):
     self.activeEndPixelPos = (0,0)
@@ -563,7 +685,8 @@ class HelixArc(PathPiece):
                startHeight=-40., endHeight=40.,
                startAngle=0., endAngle=360.,
                radius=50., center=[0,0,0],
-               rightHanded=True, color=(0,0,255)):
+               rightHanded=True, color=(0,0,255),
+               gamma=1.):
     super(HelixArc, self).__init__()
     self.center = center[:]
     self.centershift = [0,0]
@@ -576,7 +699,7 @@ class HelixArc(PathPiece):
     self.inactiveEndPixelPos = [0,0]
     ## The gamma value controls the gradient of the HelixArc's steepness
     #  It's called "gamma" because it follows a gamma correction-style curve
-    self.gamma = 1.
+    self.gamma = gamma
     self.recompute()
     self.render()
 
@@ -815,6 +938,12 @@ def unprojectPixelTo3dPosition(p, origin=ORIGIN, height=0.):
   return point3d
 
 
+def drawPotentialConnectionLine(p1, p2, screen):
+  # Yes, this is really not how that was intended to be used.
+  s = Straight(p1,p2)
+  s.draw(screen)
+
+
 def drawHelpLines(pos3D, screen, toOrigin=True):
   """Draw 3D orientation help lines"""
   positions = [project3dToPixelPosition((0, 0, 0)),
@@ -876,7 +1005,14 @@ def render_background():
 def makeGUIButtons():
   """Initialize GUI buttons"""
   buttons = []
-  to_make = (
+  to_make = ((NewSceneButton, "newSceneButton",
+                (50, 0)),
+             (LoadSceneButton, "loadSceneButton",
+                (50, 50)),
+             (SaveSceneButton, "saveSceneButton",
+                (50, 100)),
+             (ExitProgramButton, "exitProgramButton",
+                (50, 150)),
              (AddStraightButton, "addStraightButton",
                 (WINDOW_SIZE[0], 0)),
              (AppendStraightButton, "appendStraightButton",
@@ -998,7 +1134,7 @@ def drawHelpDebugInfoMessages(screen, rerender=False,
     for i in range(3):
       textObj = pygame.font.SysFont(None, 18).render(lines[i], True, (0, 0, 0))
       textRect = textObj.get_rect()
-      textRect.topleft = (0, (i+1)*15)
+      textRect.topleft = (60, (i+1)*15)
       msgs1.append((textObj, textRect))
 
   # Some help text
@@ -1132,7 +1268,16 @@ def main():
   framesWithoutRerendering = 0
 
   ### DEBUG
-  objectsList.append(HelixArc())
+  objectsList.append(HelixArc(startHeight=-40., endHeight=140.,
+                               startAngle=180., endAngle=360.,
+                               radius=50., center=[0,0,0],
+                               rightHanded=True, color=(0,0,255),
+                               gamma=5.))
+  objectsList.append(HelixArc(startHeight=20., endHeight=140.,
+                               startAngle=-360., endAngle=360.,
+                               radius=100., center=[0,100,0],
+                               rightHanded=False, color=(0,0,255),
+                               gamma=1.))
 
   # Prerender font object
   toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.', True, (0,0,0))
@@ -1489,7 +1634,7 @@ def main():
 
     # Print helpful information and debugging messages (CPU intensive!)
     textRect = toggleDebugTextObj.get_rect()
-    textRect.topleft = (0,0)
+    textRect.topleft = (60,0)
     screen.blit(toggleDebugTextObj, textRect)
     if printDebug:
       drawHelpDebugInfoMessages(screen, rerender)

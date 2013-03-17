@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="210mm"
+   height="297mm"
+   id="svg2"
+   version="1.1"
+   inkscape:version="0.48.3.1 r9886"
+   sodipodi:docname="newscenebutton.svg">
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1.979899"
+     inkscape:cx="424.47676"
+     inkscape:cy="482.13261"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1211"
+     inkscape:window-height="1006"
+     inkscape:window-x="0"
+     inkscape:window-y="24"
+     inkscape:window-maximized="0" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Ebene 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       id="g3861"
+       transform="translate(144.45181,35.860415)">
+      <rect
+         inkscape:export-ydpi="70.450096"
+         inkscape:export-xdpi="70.450096"
+         inkscape:export-filename="/opt/mayday/img/newScene.png"
+         ry="0"
+         y="494.75253"
+         x="340.61868"
+         height="62.857143"
+         width="62.857143"
+         id="rect2985"
+         style="fill:#e8e8fa;fill-opacity:1;stroke:#ff7fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+      <rect
+         inkscape:export-ydpi="70.450096"
+         inkscape:export-xdpi="70.450096"
+         inkscape:export-filename="/opt/mayday/img/newScene.png"
+         ry="0"
+         y="494.75253"
+         x="340.61868"
+         height="62.857143"
+         width="62.857143"
+         id="rect2985-0"
+         style="fill:none;stroke:#ff7fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+    </g>
+    <g
+       id="g3865"
+       transform="translate(92.361353,205.14387)"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70"
+       inkscape:export-filename="/opt/mayday/img/newSceneHighlighted.png">
+      <rect
+         inkscape:export-ydpi="70.450096"
+         inkscape:export-xdpi="70.450096"
+         inkscape:export-filename="/opt/mayday/img/newSceneHighlighted.png"
+         ry="0"
+         y="391.63406"
+         x="326.03906"
+         height="62.857143"
+         width="62.857143"
+         id="rect2985-5"
+         style="fill:#b4b3ee;fill-opacity:1;stroke:#ff7fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+      <rect
+         inkscape:export-ydpi="70.450096"
+         inkscape:export-xdpi="70.450096"
+         inkscape:export-filename="/home/nikolaus/Arbeitsfläche/straight.png"
+         ry="0"
+         y="391.63406"
+         x="326.03906"
+         height="62.857143"
+         width="62.857143"
+         id="rect2985-0-5"
+         style="fill:none;stroke:#f3c1fc;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+    </g>
+    <rect
+       style="fill:#9a9aa6;fill-opacity:1;stroke:#ff7fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       id="rect2985-3"
+       width="62.857143"
+       height="62.857143"
+       x="340.61868"
+       y="494.75253"
+       ry="0"
+       inkscape:export-filename="/opt/mayday/img/newSceneClicked.png"
+       inkscape:export-xdpi="70.450096"
+       inkscape:export-ydpi="70.450096" />
+    <g
+       id="g3851"
+       transform="translate(103.09413,-26.643199)"
+       inkscape:export-filename="/opt/mayday/img/newSceneClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70">
+      <path
+         sodipodi:nodetypes="cccccc"
+         inkscape:connector-curvature="0"
+         id="rect3039"
+         d="m 251.52798,530.36584 23.26076,0 11.58951,11.64369 0,33.3081 -34.85027,0 z"
+         style="fill:#ffffff;fill-opacity:1;stroke:none" />
+      <path
+         sodipodi:nodetypes="cccc"
+         inkscape:connector-curvature="0"
+         id="rect3812"
+         d="m 274.84279,530.33796 11.42953,11.64476 c -3.27624,1.94744 -8.81696,2.72949 -12.6441,3.29394 0.21564,-4.48975 -0.77084,-10.25723 1.21457,-14.9387 z"
+         style="fill:#000000;fill-opacity:0.29773464;stroke:none" />
+      <path
+         sodipodi:nodetypes="cccc"
+         inkscape:connector-curvature="0"
+         id="rect3812-5"
+         d="m 274.79911,530.33095 11.5625,11.5625 -11.5625,0 z"
+         style="fill:#ffffff;fill-opacity:1;stroke:none" />
+    </g>
+  </g>
+</svg>
