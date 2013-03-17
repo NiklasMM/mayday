@@ -50,8 +50,12 @@
 
 import pygame
 from math import pi, sin, cos
-import logging, sys, os
+import logging, sys, os, pickle, shelve
 from collections import deque
+
+# import pygtk
+import gtk
+# pygtk.require('2.0')
 
 SCRIPT_PATH = os.path.dirname(__file__)
 
@@ -127,11 +131,11 @@ TOOLTIP_TEXTS = {
                  "DeleteObjectsButton":
                   "Permanently delete all selected objects",
                  "LoadSceneButton":
-                  "Load an existing scene from disk (existing scene will be lost!)",
+                  "Load an existing scene from disk (unsaved changes will be lost!)",
                  "SaveSceneButton":
                   "Save the current scene to disk",
                  "NewSceneButton":
-                  "Create a new, blank scene (current scene will be lost!)",
+                  "Create a new, blank scene (unsaved changes will be lost!)",
                  "ExitProgramButton":
                   "Exit the program (unsaved changes will be lost!)"
                 }
@@ -169,7 +173,7 @@ class DisplayedObject(object):
     ppos[1] += relativePixelMotion[1]
     self.moveTo(unprojectPixelTo3dPosition(ppos, ORIGIN, z))
 
-  def render(self):
+  def render(self, highdefinition=False):
     return None
 
   def draw(self, screen):
@@ -431,10 +435,10 @@ class DeleteObjectsButton(Button):
     clickedImg = pygame.image.load('{}/img/deleteobjectsClicked.png'.format(SCRIPT_PATH))
     highlightedImg = pygame.image.load('{}/img/deleteobjectsHighlighted.png'.format(SCRIPT_PATH))
     super(DeleteObjectsButton, self).__init__(name,
-                                                buttonRect,
-                                                img,
-                                                clickedImg,
-                                                highlightedImg)
+                                              buttonRect,
+                                              img,
+                                              clickedImg,
+                                              highlightedImg)
 
   def clickAction(self):
     # Check if the button is enabled
@@ -460,10 +464,10 @@ class NewSceneButton(Button):
     clickedImg = pygame.image.load('{}/img/newSceneClicked.png'.format(SCRIPT_PATH))
     highlightedImg = pygame.image.load('{}/img/newSceneHighlighted.png'.format(SCRIPT_PATH))
     super(NewSceneButton, self).__init__(name,
-                                                buttonRect,
-                                                img,
-                                                clickedImg,
-                                                highlightedImg)
+                                         buttonRect,
+                                         img,
+                                         clickedImg,
+                                         highlightedImg)
 
   def clickAction(self):
     # Check if the button is enabled
@@ -471,7 +475,9 @@ class NewSceneButton(Button):
       super(NewSceneButton, self).clickAction()
     except:
       return None
-    print "lol no action"
+    purgeScene()
+    setWindowTitle('New Scene')
+    infoMessage('New Scene!')
 
   def tooltip(self, screen, mousePos=None):
     super(NewSceneButton, self).tooltip(screen, mousePos, "NewSceneButton")
@@ -487,10 +493,12 @@ class LoadSceneButton(Button):
     clickedImg = pygame.image.load('{}/img/loadSceneClicked.png'.format(SCRIPT_PATH))
     highlightedImg = pygame.image.load('{}/img/loadSceneHighlighted.png'.format(SCRIPT_PATH))
     super(LoadSceneButton, self).__init__(name,
-                                                buttonRect,
-                                                img,
-                                                clickedImg,
-                                                highlightedImg)
+                                          buttonRect,
+                                          img,
+                                          clickedImg,
+                                          highlightedImg)
+    self.lastFile = ''
+    self.lastDir  = ''
 
   def clickAction(self):
     # Check if the button is enabled
@@ -498,7 +506,45 @@ class LoadSceneButton(Button):
       super(LoadSceneButton, self).clickAction()
     except:
       return None
-    print "lol no action"
+    # GTK
+    chooser = gtk.FileChooserDialog(title='Mayday Level Editor - Load scene',
+                                    action=gtk.FILE_CHOOSER_ACTION_OPEN,
+                                    buttons=(gtk.STOCK_CANCEL,
+                                             gtk.RESPONSE_CANCEL,
+                                             gtk.STOCK_OPEN,
+                                             gtk.RESPONSE_OK))
+    chooser.set_current_folder(SCRIPT_PATH)
+    ffilter = gtk.FileFilter()
+    ffilter.set_name("Python shelved data")
+    ffilter.add_pattern("*.shelve")
+    chooser.add_filter(ffilter)
+    if self.lastDir:
+      chooser.set_current_folder(self.lastDir)
+    response = chooser.run()
+    if response == gtk.RESPONSE_OK:
+      # Delete current scene
+      purgeScene()
+      filename = chooser.get_filename()
+      self.lastDir, self.lastFile = os.path.split(filename)
+      db = shelve.open(filename)
+      # Reconstruct scene
+      global objectsList
+      classes = {'Straight': Straight,
+                 'HelixArc': HelixArc}
+      for classname, shelvedObj in db['objectslist']:
+        o = classes[classname]()
+        o.unshelve(shelvedObj)
+        objectsList.append(o)
+        if classname == 'HelixArc':
+          o.recompute()
+        o.render(True)
+      db.close()
+      setWindowTitle(filename, False)
+      infoMessage('%s loaded' % filename)
+    chooser.destroy()
+    # Force GTK to empty its event loop, else a dialog window gets stuck
+    while gtk.events_pending():
+      gtk.main_iteration()
 
   def tooltip(self, screen, mousePos=None):
     super(LoadSceneButton, self).tooltip(screen, mousePos, "LoadSceneButton")
@@ -514,10 +560,12 @@ class SaveSceneButton(Button):
     clickedImg = pygame.image.load('{}/img/saveSceneClicked.png'.format(SCRIPT_PATH))
     highlightedImg = pygame.image.load('{}/img/saveSceneHighlighted.png'.format(SCRIPT_PATH))
     super(SaveSceneButton, self).__init__(name,
-                                                buttonRect,
-                                                img,
-                                                clickedImg,
-                                                highlightedImg)
+                                          buttonRect,
+                                          img,
+                                          clickedImg,
+                                          highlightedImg)
+    self.lastFile = ''
+    self.lastDir  = ''
 
   def clickAction(self):
     # Check if the button is enabled
@@ -525,7 +573,40 @@ class SaveSceneButton(Button):
       super(SaveSceneButton, self).clickAction()
     except:
       return None
-    print "lol no action"
+    # GTK
+    chooser = gtk.FileChooserDialog(title='Mayday Level Editor - Save scene',
+                                    action=gtk.FILE_CHOOSER_ACTION_SAVE,
+                                    buttons=(gtk.STOCK_CANCEL,
+                                             gtk.RESPONSE_CANCEL,
+                                             gtk.STOCK_SAVE,
+                                             gtk.RESPONSE_OK))
+    chooser.set_current_folder(SCRIPT_PATH)
+    ffilter = gtk.FileFilter()
+    ffilter.set_name("Python shelved data")
+    ffilter.add_pattern("*.shelve")
+    chooser.add_filter(ffilter)
+    if self.lastDir:
+      chooser.set_current_folder(self.lastDir)
+    if self.lastFile:
+      chooser.set_current_name(self.lastFile)
+    else:
+      chooser.set_current_name('NewScene.shelve')
+    response = chooser.run()
+    if response == gtk.RESPONSE_OK:
+      filename = chooser.get_filename()
+      self.lastDir, self.lastFile = os.path.split(filename)
+      # TODO confirm overwrite?
+      db = shelve.open(filename)
+      db['objectslist'] = [(o.__class__.__name__, o.shelve())
+                            for o in objectsList
+                            if not isinstance(o, Button)]
+      db.close()
+      setWindowTitle(filename, False)
+      infoMessage('%s saved' % filename)
+    chooser.destroy()
+    # Force GTK to empty its event loop, else a dialog window gets stuck
+    while gtk.events_pending():
+      gtk.main_iteration()
 
   def tooltip(self, screen, mousePos=None):
     super(SaveSceneButton, self).tooltip(screen, mousePos, "SaveSceneButton")
@@ -541,10 +622,10 @@ class ExitProgramButton(Button):
     clickedImg = pygame.image.load('{}/img/exitProgramClicked.png'.format(SCRIPT_PATH))
     highlightedImg = pygame.image.load('{}/img/exitProgramHighlighted.png'.format(SCRIPT_PATH))
     super(ExitProgramButton, self).__init__(name,
-                                                buttonRect,
-                                                img,
-                                                clickedImg,
-                                                highlightedImg)
+                                            buttonRect,
+                                            img,
+                                            clickedImg,
+                                            highlightedImg)
 
   def clickAction(self):
     # Check if the button is enabled
@@ -552,7 +633,18 @@ class ExitProgramButton(Button):
       super(ExitProgramButton, self).clickAction()
     except:
       return None
-    pygame.event.post(pygame.event.Event(pygame.QUIT))
+    # GTK
+    pdialog = gtk.MessageDialog(type=gtk.MESSAGE_WARNING,
+                                buttons=gtk.BUTTONS_YES_NO)
+    pdialog.set_markup('Quit Mayday Level Editor?')
+    response = pdialog.run()
+    if response == gtk.RESPONSE_YES:
+      pygame.event.post(pygame.event.Event(pygame.QUIT))
+      # TODO shelve scene
+    pdialog.destroy()
+    # Force GTK to empty its event loop, else a dialog window gets stuck
+    while gtk.events_pending():
+      gtk.main_iteration()
 
   def tooltip(self, screen, mousePos=None):
     super(ExitProgramButton, self).tooltip(screen, mousePos, "ExitProgramButton")
@@ -564,6 +656,9 @@ class PathPiece(ClickRegisteringObject):
     self.activeEndPixelPos = (0,0)
     self.inactiveEndPixelPos = (0,0)
     super(PathPiece, self).__init__()
+
+  def shelve(self):
+    pass
 
   def cursorOnEnd(self, mousePos=None, activeEnd=True):
     if mousePos is None:
@@ -595,6 +690,23 @@ class Straight(PathPiece):
     self.activeEnd = 0
     self.render()
 
+  def shelve(self):
+    """Save a Straight instance to file"""
+    d = [self.startPoint[:],
+         self.endPoint[:],
+         self.color[:],
+         self.center[:],
+         self.activeEnd[:]]
+    return d
+
+  def unshelve(self, shelvedData):
+    """Load a Straight instance from file"""
+    self.startPoint,    \
+    self.endPoint,      \
+    self.color,         \
+    self.center,        \
+    self.activeEnd = shelvedData
+
   def moveTo(self, newPos):
     startOffset = [(i-j) for i,j in zip(self.startPoint, self.center)]
     endOffset = [(i-j) for i,j in zip(self.endPoint, self.center)]
@@ -603,7 +715,7 @@ class Straight(PathPiece):
     self.endPoint = tuple([(i+j) for i,j in zip(endOffset, self.center)])
     self.render()
 
-  def render(self):
+  def render(self, highdefinition=False):
     """Call after viewing direction or zoom change to rerender object"""
 
     #gradient = [i-j for i,j in zip(self.startPoint, self.endPoint)]
@@ -702,6 +814,37 @@ class HelixArc(PathPiece):
     self.gamma = gamma
     self.recompute()
     self.render()
+
+  def shelve(self):
+    """Save a HelixArc instance to file"""
+    d = [self.center[:],
+         self.centershift[:],
+         self.color[:],
+         self.startAngle,
+         self.endAngle,
+         self.startHeight,
+         self.endHeight,
+         self.rightHanded,
+         self.radius,
+         self.activeEndPixelPos[:],
+         self.inactiveEndPixelPos[:],
+         self.gamma]
+    return d
+
+  def unshelve(self, shelvedData):
+    """Load a HelixArc instance from file"""
+    self.center,                  \
+    self.centershift,             \
+    self.color,                   \
+    self.startAngle,              \
+    self.endAngle,                \
+    self.startHeight,             \
+    self.endHeight,               \
+    self.rightHanded,             \
+    self.radius,                  \
+    self.activeEndPixelPos,       \
+    self.inactiveEndPixelPos,     \
+    self.gamma = shelvedData
 
   def recompute(self):
     height, angle = self.startHeight, self.startAngle
@@ -870,8 +1013,19 @@ class HelixArc(PathPiece):
 #_______________________________________________________________________
 
 
+def purgeScene():
+  """Completely kill the current scene"""
+  global objectsList
+  deselectObjects()
+  objectsList = [o for o in objectsList if isinstance(o, Button)]
+
+def setWindowTitle(newTitle, star=True):
+  """Set the window title"""
+  s = 'Mayday Level Editor - %s%s' % (newTitle, '*' if star else '')
+  pygame.display.set_caption(s)
+
 def getObjectByName(name):
-  "Identify objects having unique names"
+  """Identify objects having unique names"""
   result = [o for o in objectsList if o.name==name]
   if not result:
     raise IndexError('Objectslist contains no object named "%s"!' % name)
@@ -880,14 +1034,14 @@ def getObjectByName(name):
   return result[0]
 
 def getObjectsByClass(cls):
-  "Identify objects by their class"
+  """Identify objects by their class"""
   result = [o for o in objectsList if isinstance(o, cls)]
   if not result:
     raise IndexError('Objectslist contains no object of class "%s"!' % cls.__name__)
   return result
 
 def compute_projection_parameters(newazimuth, newelevation, newzoom):
-  "Changes the camera perspective"
+  """Changes the camera perspective"""
   global azimuth, elevation, right, front, up, zoom
   azimuth = newazimuth
   while azimuth < 0.: azimuth += 2*pi
@@ -1212,7 +1366,7 @@ def main():
   pygame.display.set_icon(icon)
 
   # Set window title
-  pygame.display.set_caption("Mayday Level Editor / Camera Demo")
+  setWindowTitle("New Scene")
 
   # Make mouse visible
   pygame.mouse.set_visible(1)
@@ -1272,7 +1426,7 @@ def main():
                                startAngle=180., endAngle=360.,
                                radius=50., center=[0,0,0],
                                rightHanded=True, color=(0,0,255),
-                               gamma=5.))
+                               gamma=1.))
   objectsList.append(HelixArc(startHeight=20., endHeight=140.,
                                startAngle=-360., endAngle=360.,
                                radius=100., center=[0,100,0],
@@ -1347,10 +1501,10 @@ def main():
       if event.type == pygame.QUIT:
         running = False
       # Quit game with ESC key
-      elif event.type == pygame.KEYDOWN:
-        if event.key == pygame.K_ESCAPE:
-          logging.debug("Quitting (ESC key)")
-          running = False
+      # elif event.type == pygame.KEYDOWN:
+        # if event.key == pygame.K_ESCAPE:
+          # logging.debug("Quitting (ESC key)")
+          # running = False
       # A mouse button was clicked
       elif event.type == pygame.MOUSEBUTTONDOWN:
         # Buttons 1-3 are LMB, MMB, RMB
