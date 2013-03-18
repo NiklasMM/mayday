@@ -12,15 +12,15 @@
 # - z-ordering (treap?)
 # - DONE adding / moving objects
 # - autojoining objects at ends to form a path
+# - automatically close a cyclic path
 # - context menu
 # - undo/redo
 # - while moving objects: hold CTRL to snap to grid
 # - path pieces cast shadows onto the ground
-# - save / load sessions
+# - DONE save / load sessions
 # - export finished levels
 #
 # TODO fixes
-# - DONE HelixArc drawing is still wrong
 # - observation:   boxselection + mmb/rmb -> boxselection and camera change
 #                  at the same time, releasing one cancels boxselection
 #   problem:       this isn't user-expected behavior
@@ -28,14 +28,7 @@
 #                  mmb or rmb dragging, ignore lmb (but not mmb or rmb)
 #
 # TODO else
-# - DONE observation:   clicking objects needs pixel-precision
-#   problem:       this isn't user-expected behavior, it's uncomfortable,
-#                  and impossible to do on touch devices
-#   solution idea: 1. copy rendered object sprite (+ padding!)
-#                  2. perform Euclidean Distance Transform on copy
-#                  3. "clicked" iff (EDT image at click position < threshold)
-#   note: didn't use distance transforms.
-# - DONE render font objects only once (currently: every frame, and fonts eat CPU)
+# - DONE render font objects only once
 #   applicable pbjects include: debug texts, button tooltips, "toggle" text
 # - comment, comment, comment, document, document, document!
 #
@@ -475,9 +468,10 @@ class NewSceneButton(Button):
       super(NewSceneButton, self).clickAction()
     except:
       return None
-    purgeScene()
-    setWindowTitle('New Scene')
-    infoMessage('New Scene!')
+    if areYouSure('Create new Scene?\n\nUnsaved changes will be lost!'):
+      purgeScene()
+      setWindowTitle('New Scene')
+      infoMessage('New Scene!')
 
   def tooltip(self, screen, mousePos=None):
     super(NewSceneButton, self).tooltip(screen, mousePos, "NewSceneButton")
@@ -522,25 +516,26 @@ class LoadSceneButton(Button):
       chooser.set_current_folder(self.lastDir)
     response = chooser.run()
     if response == gtk.RESPONSE_OK:
-      # Delete current scene
-      purgeScene()
       filename = chooser.get_filename()
-      self.lastDir, self.lastFile = os.path.split(filename)
-      db = shelve.open(filename)
-      # Reconstruct scene
-      global objectsList
-      classes = {'Straight': Straight,
-                 'HelixArc': HelixArc}
-      for classname, shelvedObj in db['objectslist']:
-        o = classes[classname]()
-        o.unshelve(shelvedObj)
-        objectsList.append(o)
-        if classname == 'HelixArc':
-          o.recompute()
-        o.render(True)
-      db.close()
-      setWindowTitle(filename, False)
-      infoMessage('%s loaded' % filename)
+      if areYouSure('Load scene %s?\n\nUnsaved changes to the current scene will be lost!' % filename):
+        # Delete current scene
+        purgeScene()
+        self.lastDir, self.lastFile = os.path.split(filename)
+        db = shelve.open(filename)
+        # Reconstruct scene
+        global objectsList
+        classes = {'Straight': Straight,
+                   'HelixArc': HelixArc}
+        for classname, shelvedObj in db['objectslist']:
+          o = classes[classname]()
+          o.unshelve(shelvedObj)
+          objectsList.append(o)
+          if classname == 'HelixArc':
+            o.recompute()
+          o.render(True)
+        db.close()
+        setWindowTitle(filename, False)
+        infoMessage('%s loaded' % filename)
     chooser.destroy()
     # Force GTK to empty its event loop, else a dialog window gets stuck
     while gtk.events_pending():
@@ -594,15 +589,17 @@ class SaveSceneButton(Button):
     response = chooser.run()
     if response == gtk.RESPONSE_OK:
       filename = chooser.get_filename()
-      self.lastDir, self.lastFile = os.path.split(filename)
-      # TODO confirm overwrite?
-      db = shelve.open(filename)
-      db['objectslist'] = [(o.__class__.__name__, o.shelve())
-                            for o in objectsList
-                            if not isinstance(o, Button)]
-      db.close()
-      setWindowTitle(filename, False)
-      infoMessage('%s saved' % filename)
+      if not os.path.isfile(filename) or \
+         areYouSure('Overwrite file %s?' % filename):
+        self.lastDir, self.lastFile = os.path.split(filename)
+        # TODO confirm overwrite?
+        db = shelve.open(filename)
+        db['objectslist'] = [(o.__class__.__name__, o.shelve())
+                              for o in objectsList
+                              if not isinstance(o, Button)]
+        db.close()
+        setWindowTitle(filename, False)
+        infoMessage('%s saved' % filename)
     chooser.destroy()
     # Force GTK to empty its event loop, else a dialog window gets stuck
     while gtk.events_pending():
@@ -633,18 +630,9 @@ class ExitProgramButton(Button):
       super(ExitProgramButton, self).clickAction()
     except:
       return None
-    # GTK
-    pdialog = gtk.MessageDialog(type=gtk.MESSAGE_WARNING,
-                                buttons=gtk.BUTTONS_YES_NO)
-    pdialog.set_markup('Quit Mayday Level Editor?')
-    response = pdialog.run()
-    if response == gtk.RESPONSE_YES:
+    # Ask for user confirmation
+    if areYouSure('Quit Mayday Level Editor?'):
       pygame.event.post(pygame.event.Event(pygame.QUIT))
-      # TODO shelve scene
-    pdialog.destroy()
-    # Force GTK to empty its event loop, else a dialog window gets stuck
-    while gtk.events_pending():
-      gtk.main_iteration()
 
   def tooltip(self, screen, mousePos=None):
     super(ExitProgramButton, self).tooltip(screen, mousePos, "ExitProgramButton")
@@ -1012,6 +1000,20 @@ class HelixArc(PathPiece):
 
 #_______________________________________________________________________
 
+
+def areYouSure(text=None):
+  """GTK function to ask for user confirmation"""
+  pdialog = gtk.MessageDialog(type=gtk.MESSAGE_WARNING,
+                              buttons=gtk.BUTTONS_YES_NO)
+  if text is not None:
+    pdialog.set_markup(text)
+  response = pdialog.run()
+  result = True if response==gtk.RESPONSE_YES else False
+  pdialog.destroy()
+  # Force GTK to empty its event loop, else a dialog window gets stuck
+  while gtk.events_pending():
+    gtk.main_iteration()
+  return result
 
 def purgeScene():
   """Completely kill the current scene"""
