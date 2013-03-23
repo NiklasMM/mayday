@@ -104,6 +104,11 @@ selectedObjects = []
 messageQueue = deque()
 messageQueueChange = False
 
+# Operation histories
+# Trivial and inefficient implementation: The entire scene status is logged...
+undoHistory = deque()
+redoHistory = deque()
+
 # Tells if a click was "doing nothing" (click into empty space)
 idleClick = True
 
@@ -130,7 +135,11 @@ TOOLTIP_TEXTS = {
                  "NewSceneButton":
                   "Create a new, blank scene (unsaved changes will be lost!)",
                  "ExitProgramButton":
-                  "Exit the program (unsaved changes will be lost!)"
+                  "Exit the program (unsaved changes will be lost!)",
+                 "UndoButton":
+                  "Undo the last operation",
+                 "RedoButton":
+                  "Repeat the last undone operation"
                 }
 TOOLTIP_SURFACEOBJECTS = {}
 
@@ -433,12 +442,14 @@ class DeleteObjectsButton(Button):
                                               clickedImg,
                                               highlightedImg)
 
-  def clickAction(self):
+  def clickAction(self, override=False):
     # Check if the button is enabled
-    try:
-      super(DeleteObjectsButton, self).clickAction()
-    except:
-      return None
+    if not override:
+      try:
+        super(DeleteObjectsButton, self).clickAction()
+      except:
+        return None
+    createUndoHistory(True)
     if selectedObjects:
       while selectedObjects:
         deleteObject(selectedObjects[-1])
@@ -462,16 +473,21 @@ class NewSceneButton(Button):
                                          clickedImg,
                                          highlightedImg)
 
-  def clickAction(self):
+  def clickAction(self, override=False):
     # Check if the button is enabled
-    try:
-      super(NewSceneButton, self).clickAction()
-    except:
-      return None
+    if not override:
+      try:
+        super(NewSceneButton, self).clickAction()
+      except:
+        return None
     if areYouSure('Create new Scene?\n\nUnsaved changes will be lost!'):
       purgeScene()
       setWindowTitle('New Scene')
       infoMessage('New Scene!')
+      undoHistory.clear()
+      getObjectByName('undoButton').disable()
+      redoHistory.clear()
+      getObjectByName('redoButton').disable()
 
   def tooltip(self, screen, mousePos=None):
     super(NewSceneButton, self).tooltip(screen, mousePos, "NewSceneButton")
@@ -494,12 +510,13 @@ class LoadSceneButton(Button):
     self.lastFile = ''
     self.lastDir  = ''
 
-  def clickAction(self):
+  def clickAction(self, override=False):
     # Check if the button is enabled
-    try:
-      super(LoadSceneButton, self).clickAction()
-    except:
-      return None
+    if not override:
+      try:
+        super(LoadSceneButton, self).clickAction()
+      except:
+        return None
     # GTK
     chooser = gtk.FileChooserDialog(title='Mayday Level Editor - Load scene',
                                     action=gtk.FILE_CHOOSER_ACTION_OPEN,
@@ -522,18 +539,15 @@ class LoadSceneButton(Button):
         purgeScene()
         self.lastDir, self.lastFile = os.path.split(filename)
         db = shelve.open(filename)
+        sceneData = db['objectslist']
         # Reconstruct scene
-        global objectsList
-        classes = {'Straight': Straight,
-                   'HelixArc': HelixArc}
-        for classname, shelvedObj in db['objectslist']:
-          o = classes[classname]()
-          o.unshelve(shelvedObj)
-          objectsList.append(o)
-          if classname == 'HelixArc':
-            o.recompute()
-          o.render(True)
+        deserializeScene(sceneData)
         db.close()
+        # Clear the undo and redo history
+        undoHistory.clear()
+        getObjectByName('undoButton').disable()
+        redoHistory.clear()
+        getObjectByName('redoButton').disable()
         setWindowTitle(filename, False)
         infoMessage('%s loaded' % filename)
     chooser.destroy()
@@ -562,12 +576,13 @@ class SaveSceneButton(Button):
     self.lastFile = ''
     self.lastDir  = ''
 
-  def clickAction(self):
+  def clickAction(self, override=False):
     # Check if the button is enabled
-    try:
-      super(SaveSceneButton, self).clickAction()
-    except:
-      return None
+    if not override:
+      try:
+        super(SaveSceneButton, self).clickAction()
+      except:
+        return None
     # GTK
     chooser = gtk.FileChooserDialog(title='Mayday Level Editor - Save scene',
                                     action=gtk.FILE_CHOOSER_ACTION_SAVE,
@@ -594,9 +609,7 @@ class SaveSceneButton(Button):
         self.lastDir, self.lastFile = os.path.split(filename)
         # TODO confirm overwrite?
         db = shelve.open(filename)
-        db['objectslist'] = [(o.__class__.__name__, o.shelve())
-                              for o in objectsList
-                              if not isinstance(o, Button)]
+        db['objectslist'] = serializeScene()
         db.close()
         setWindowTitle(filename, False)
         infoMessage('%s saved' % filename)
@@ -624,18 +637,73 @@ class ExitProgramButton(Button):
                                             clickedImg,
                                             highlightedImg)
 
-  def clickAction(self):
+  def clickAction(self, override=False):
     # Check if the button is enabled
-    try:
-      super(ExitProgramButton, self).clickAction()
-    except:
-      return None
+    if not override:
+      try:
+        super(ExitProgramButton, self).clickAction()
+      except:
+        return None
     # Ask for user confirmation
     if areYouSure('Quit Mayday Level Editor?'):
       pygame.event.post(pygame.event.Event(pygame.QUIT))
 
   def tooltip(self, screen, mousePos=None):
     super(ExitProgramButton, self).tooltip(screen, mousePos, "ExitProgramButton")
+
+
+
+class UndoButton(Button):
+  def __init__(self, name="UndoButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/undo.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/undoClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/undoHighlighted.png'.format(SCRIPT_PATH))
+    super(UndoButton, self).__init__(name,
+                                            buttonRect,
+                                            img,
+                                            clickedImg,
+                                            highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(UndoButton, self).clickAction()
+    except:
+      return None
+    undo()
+
+  def tooltip(self, screen, mousePos=None):
+    super(UndoButton, self).tooltip(screen, mousePos, "UndoButton")
+
+
+
+class RedoButton(Button):
+  def __init__(self, name="RedoButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/redo.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/redoClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/redoHighlighted.png'.format(SCRIPT_PATH))
+    super(RedoButton, self).__init__(name,
+                                            buttonRect,
+                                            img,
+                                            clickedImg,
+                                            highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(RedoButton, self).clickAction()
+    except:
+      return None
+    redo()
+
+  def tooltip(self, screen, mousePos=None):
+    super(RedoButton, self).tooltip(screen, mousePos, "RedoButton")
 
 
 
@@ -1021,6 +1089,66 @@ def purgeScene():
   deselectObjects()
   objectsList = [o for o in objectsList if isinstance(o, Button)]
 
+def serializeScene():
+  """Save all PathPiece instances"""
+  return [(o.__class__.__name__, o.shelve()) for o in objectsList
+                                             if not isinstance(o, Button)]
+
+def deserializeScene(data):
+  """Reconstruct PathPiece instances from serialized data"""
+  global objectsList
+  classes = {'Straight': Straight,
+             'HelixArc': HelixArc}
+  for classname, shelvedObj in data:
+    o = classes[classname]()
+    o.unshelve(shelvedObj)
+    objectsList.append(o)
+    if classname == 'HelixArc':
+      o.recompute()
+    o.render(True)
+
+def createUndoHistory(newstep=False):
+  """Saves the current scene state into the undo history"""
+  state = serializeScene()
+  undoHistory.append(state)
+  # Adding a new undo step clears the redo history
+  getObjectByName('undoButton').enable()
+  if newstep:
+    redoHistory.clear()
+    getObjectByName('redoButton').disable()
+
+def createRedoHistory():
+  """Saves the current scene state into the undo history"""
+  state = serializeScene()
+  redoHistory.appendleft(state)
+  # Adding a new undo step clears the redo history
+  # getObjectByName('undoButton').enable()
+  # getObjectByName('redoButton').disable()
+
+def undo():
+  """Go back one step in the history"""
+  if not undoHistory:
+    return
+  createRedoHistory()
+  newState = undoHistory.pop()
+  if not undoHistory:
+    getObjectByName('undoButton').disable()
+  purgeScene()
+  deserializeScene(newState)
+  getObjectByName('redoButton').enable()
+
+def redo():
+  """Go forward one step in the undo history"""
+  if not redoHistory:
+    return
+  createUndoHistory()
+  newState = redoHistory.popleft()
+  if not redoHistory:
+    getObjectByName('redoButton').disable()
+  purgeScene()
+  deserializeScene(newState)
+  getObjectByName('undoButton').enable()
+
 def setWindowTitle(newTitle, star=True):
   """Set the window title"""
   s = 'Mayday Level Editor - %s%s' % (newTitle, '*' if star else '')
@@ -1180,7 +1308,11 @@ def makeGUIButtons():
              (ChangeActiveEndButton, "changeActiveEndButton",
                 (WINDOW_SIZE[0], 100)),
              (DeleteObjectsButton, "deleteObjectsButton",
-                (WINDOW_SIZE[0], 150))
+                (WINDOW_SIZE[0], 150)),
+             (UndoButton, "undoButton",
+                (WINDOW_SIZE[0]//2,0)),
+             (RedoButton, "redoButton",
+                (WINDOW_SIZE[0]//2+50,0))
             )
 
   for buttonClass, name, (x,y) in to_make:
@@ -1195,6 +1327,8 @@ def makeGUIButtons():
   getObjectByName("appendStraightButton").disable()
   getObjectByName("appendHelixArcButton").disable()
   getObjectByName("deleteObjectsButton").disable()
+  getObjectByName("undoButton").disable()
+  getObjectByName("redoButton").disable()
 
 
 
@@ -1441,6 +1575,8 @@ def main():
   # Global frame counter
   totalFrameCount = 0
 
+  pressedKeysLastTick = None
+
   # MAIN LOOP
   running = True
   while running:
@@ -1599,7 +1735,8 @@ def main():
     if pressedKeys[pygame.K_w]:
       compute_projection_parameters(azimuth, elevation+ELEVATION_ANGULAR_SPEED, zoom)
       rerender = True
-    if pressedKeys[pygame.K_s]:
+    if pressedKeys[pygame.K_s] and not \
+       pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
       compute_projection_parameters(azimuth, elevation-ELEVATION_ANGULAR_SPEED, zoom)
       rerender = True
     if pressedKeys[pygame.K_HOME]:
@@ -1643,14 +1780,35 @@ def main():
                                            MOUSE_ZOOM_OUT_SPEED))
           rerender = True
 
-    ## Special keyboard commands
-    # Ctrl+A: Select all objects
-    if pressedKeys[pygame.K_a] and not pressedKeysLastTick[pygame.K_a] and \
-       pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
-      infoMessage("Select all")
-      for o in objectsList:
-        if not isinstance(o, Button):
-          selectObjects(o)
+    ## Keyboard shortcuts
+    if pressedKeysLastTick != pressedKeys:
+      if pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
+        # Ctrl+A: Select all objects
+        if pressedKeys[pygame.K_a] and not pressedKeysLastTick[pygame.K_a]:
+          infoMessage("Select all")
+          for o in objectsList:
+            if not isinstance(o, Button):
+              selectObjects(o)
+        # Ctrl-Z: Undo
+        if pressedKeys[pygame.K_z]:
+          undo()
+        # Ctrl-Y or Ctrl-Shift-Z: Redo
+        if pressedKeys[pygame.K_y] or \
+           pressedKeys[pygame.K_z] and \
+           (pressedKeys[pygame.K_LSHIFT] or pressedKeys[pygame.K_RSHIFT]):
+          redo()
+        # Ctrl-N: New scene
+        if pressedKeys[pygame.K_n]:
+          getObjectByName('newSceneButton').clickAction(True)
+        # Ctrl-O: Load scene
+        if pressedKeys[pygame.K_o]:
+          getObjectByName('loadSceneButton').clickAction(True)
+        # Ctrl-S: Save scene
+        if pressedKeys[pygame.K_s]:
+          getObjectByName('saveSceneButton').clickAction(True)
+        # Ctrl-Q: Quit program
+        if pressedKeys[pygame.K_q]:
+          getObjectByName('exitProgramButton').clickAction(True)
 
     """# Move selected objects per keyboard
     try:
@@ -1672,9 +1830,7 @@ def main():
 
     ## Delete selected objects
     if pressedKeys[pygame.K_DELETE] and selectedObjects:
-      if selectedObjects:
-        while selectedObjects:
-          deleteObject(selectedObjects[-1])
+      getObjectByName('deleteObjectsButton').clickAction(True)
 
     # Change a HelixArc's curve gamma
     if len(selectedObjects)==1 and isinstance(selectedObjects[0], HelixArc):
