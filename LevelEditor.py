@@ -298,6 +298,7 @@ class AddStraightButton(Button):
       super(AddStraightButton, self).clickAction()
     except:
       return None
+    createUndoHistory()
     global objectsList
     objectsList.append(Straight((-20,-20,-20),(20,50,20)))
     infoMessage("Straight object added.")
@@ -327,6 +328,7 @@ class AppendStraightButton(Button):
       super(AppendStraightButton, self).clickAction()
     except:
       return None
+    createUndoHistory()
     if not selectedObjects:
       infoMessage("must select a single path piece to append (none selected)")
     elif len(selectedObjects) > 1:
@@ -357,6 +359,7 @@ class AddHelixArcButton(Button):
       super(AddHelixArcButton, self).clickAction()
     except:
       return None
+    createUndoHistory()
     global objectsList
     objectsList.append(HelixArc())
     objectsList[-1].render(True)
@@ -386,6 +389,7 @@ class AppendHelixArcButton(Button):
       super(AppendHelixArcButton, self).clickAction()
     except:
       return None
+    createUndoHistory()
     if not selectedObjects:
       infoMessage("must select a single path piece to append (none selected)")
     elif len(selectedObjects) > 1:
@@ -449,7 +453,7 @@ class DeleteObjectsButton(Button):
         super(DeleteObjectsButton, self).clickAction()
       except:
         return None
-    createUndoHistory(True)
+    createUndoHistory()
     if selectedObjects:
       while selectedObjects:
         deleteObject(selectedObjects[-1])
@@ -752,7 +756,7 @@ class Straight(PathPiece):
          self.endPoint[:],
          self.color[:],
          self.center[:],
-         self.activeEnd[:]]
+         self.activeEnd]
     return d
 
   def unshelve(self, shelvedData):
@@ -1107,7 +1111,7 @@ def deserializeScene(data):
       o.recompute()
     o.render(True)
 
-def createUndoHistory(newstep=False):
+def createUndoHistory(newstep=True):
   """Saves the current scene state into the undo history"""
   state = serializeScene()
   undoHistory.append(state)
@@ -1141,7 +1145,7 @@ def redo():
   """Go forward one step in the undo history"""
   if not redoHistory:
     return
-  createUndoHistory()
+  createUndoHistory(False)
   newState = redoHistory.popleft()
   if not redoHistory:
     getObjectByName('redoButton').disable()
@@ -1662,16 +1666,20 @@ def main():
               if len(selectedObjects)==1 and selectedObjects[0].cursorOnObject():
                 so = selectedObjects[0]
                 if so.cursorOnEnd(mousePos):
+                  createUndoHistory()
                   dragStartedOnActiveEnd = True
                 elif so.cursorOnEnd(mousePos, False):
+                  createUndoHistory()
                   dragStartedOnInactiveEnd = True
                 else:
+                  createUndoHistory()
                   dragStartedOnSelectedObject = True
                   infoMessage("dragStartedOnSelectedObject")
                 break
               else:
                 for so in selectedObjects:
                   if so.cursorOnObject(mousePos):
+                    createUndoHistory()
                     dragStartedOnSelectedObject = True
                     infoMessage("dragStartedOnSelectedObject")
                     break
@@ -1687,6 +1695,12 @@ def main():
           raise Exception('Unknown mouse button %d!' % event.button)
       # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
+        # If the click was idle, forget the preemptively created history point
+        if (dragStartedOnActiveEnd or \
+            dragStartedOnInactiveEnd or \
+            dragStartedOnSelectedObject) and \
+            idleClick:
+            undoHistory.pop()
         if lmbLastTick and \
            not boxSelectionInProgress and \
            not dragStartedOnGUI and \
@@ -1792,10 +1806,8 @@ def main():
         # Ctrl-Z: Undo
         if pressedKeys[pygame.K_z]:
           undo()
-        # Ctrl-Y or Ctrl-Shift-Z: Redo
-        if pressedKeys[pygame.K_y] or \
-           pressedKeys[pygame.K_z] and \
-           (pressedKeys[pygame.K_LSHIFT] or pressedKeys[pygame.K_RSHIFT]):
+        # Ctrl-Y: Redo
+        if pressedKeys[pygame.K_y]:
           redo()
         # Ctrl-N: New scene
         if pressedKeys[pygame.K_n]:
