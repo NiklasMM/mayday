@@ -145,6 +145,65 @@ TOOLTIP_SURFACEOBJECTS = {}
 
 #_______________________________________________________________________
 
+
+class Point3D(object):
+  def __init__(self, _x=0., _y=0., _z=0.):
+    """Constructor"""
+    self.x, self.y, self.z = _x, _y, _z
+
+  @classmethod
+  def copy(self, other):
+    """Copy 'constructor'"""
+    if not isinstance(other, Point3D):
+      raise TypeError
+    return Point3D(other.x, other.y, other.z)
+
+  def __add__(self, other):
+    """self + other"""
+    if not isinstance(other, Point3D):
+      raise TypeError
+    return Point3D(self.x + other.x,
+                   self.y + other.y,
+                   self.z + other.z)
+
+  def __sub__(self, other):
+    """self - other"""
+    if not isinstance(other, Point3D):
+      raise TypeError
+    return Point3D(self.x - other.x,
+                   self.y - other.y,
+                   self.z - other.z)
+
+  def __iadd__(self, other):
+    """self += other"""
+    if not isinstance(other, Point3D):
+      raise TypeError
+    self.x += other.x
+    self.y += other.y
+    self.z += other.z
+
+  def __isub__(self, other):
+    """self -= other"""
+    if not isinstance(other, Point3D):
+      raise TypeError
+    self.x -= other.x
+    self.y -= other.y
+    self.z -= other.z
+
+  def __div__(self, other):
+    """self / other"""
+    if not isinstance(other, (int, long, float)):
+      raise TypeError
+    if isinstance(other, float):
+      return Point3D(self.x / other,
+                     self.y / other,
+                     self.z / other)
+    else:
+      return Point3D(self.x / float(other),
+                     self.y / float(other),
+                     self.z / float(other))
+
+
 class DisplayedObject(object):
   def __init__(self):
     self.surfaceObj = None
@@ -152,7 +211,7 @@ class DisplayedObject(object):
     self.selected = False
     # Some objects have (unique!) names
     self.name = ""
-    self.center = [0,0,0]
+    self.center = Point3D()
 
   def select(self):
     self.selected = True
@@ -160,16 +219,16 @@ class DisplayedObject(object):
     self.selected = False
 
   def moveTo(self, newPos):
-    self.center = [i for i in newPos]
+    self.center = Point3D.copy(newPos)
 
   def moveByOffset(self, offset):
-    self.center = [i+j for i,j in zip(self.center, offset)]
+    self.center += offset
 
   def getEndPoint3d(self, getActiveEnd):
-    return [0,0,0]
+    return Point3D()
 
   def moveByPixelOffset(self, relativePixelMotion):
-    z = self.center[2]
+    z = self.center.z
     ppos = project3dToPixelPosition(self.center)
     ppos[0] += relativePixelMotion[0]
     ppos[1] += relativePixelMotion[1]
@@ -300,7 +359,8 @@ class AddStraightButton(Button):
       return None
     createUndoHistory()
     global objectsList
-    objectsList.append(Straight((-20,-20,-20),(20,50,20)))
+    objectsList.append(Straight(Point3D(-20,-20,-20),
+                                Point3D(20,50,20)))
     infoMessage("Straight object added.")
 
   def tooltip(self, screen, mousePos=None):
@@ -739,23 +799,24 @@ class PathPiece(ClickRegisteringObject):
 
 class Straight(PathPiece):
   def __init__(self,
-               startPoint3D=[0,0,0],
-               endPoint3D=[0,0,0],
+               startPoint3D=Point3D(),
+               endPoint3D=Point3D(),
                color=(0,0,255)):
     super(Straight, self).__init__()
-    self.startPoint = startPoint3D
-    self.endPoint = endPoint3D
+    self.startPoint = Point3D.copy(startPoint3D)
+    self.endPoint = Point3D.copy(endPoint3D)
     self.color = color
-    self.center = [(a+b)/2. for a,b in zip(startPoint3D, endPoint3D)]
+    #[(a+b)/2. for a,b in zip(startPoint3D, endPoint3D)]
+    self.center = (startPoint3D+endPoint3D)/2
     self.activeEnd = 0
     self.render()
 
   def shelve(self):
     """Save a Straight instance to file"""
-    d = [self.startPoint[:],
-         self.endPoint[:],
+    d = [self.startPoint,
+         self.endPoint,
          self.color[:],
-         self.center[:],
+         self.center,
          self.activeEnd]
     return d
 
@@ -768,11 +829,15 @@ class Straight(PathPiece):
     self.activeEnd = shelvedData
 
   def moveTo(self, newPos):
-    startOffset = [(i-j) for i,j in zip(self.startPoint, self.center)]
-    endOffset = [(i-j) for i,j in zip(self.endPoint, self.center)]
+    #[(i-j) for i,j in zip(self.startPoint, self.center)]
+    startOffset = self.startPoint - self.center
+    #[(i-j) for i,j in zip(self.endPoint, self.center)]
+    endOffset = self.endPoint - self.center
     super(Straight, self).moveTo(newPos)
-    self.startPoint = tuple([(i+j) for i,j in zip(startOffset, self.center)])
-    self.endPoint = tuple([(i+j) for i,j in zip(endOffset, self.center)])
+    #tuple([(i+j) for i,j in zip(startOffset, self.center)])
+    self.startPoint = startOffset + self.center
+    #tuple([(i+j) for i,j in zip(endOffset, self.center)])
+    self.endPoint = endOffset + self.center
     self.render()
 
   def render(self, highdefinition=False):
@@ -797,9 +862,8 @@ class Straight(PathPiece):
     tempSurfaceObjCenter = [tempSurfaceObj.get_size()[0]//2,
                             tempSurfaceObj.get_size()[1]//2]
 
-    linecenter = project3dToPixelPosition(((self.endPoint[0]+self.startPoint[0])/2,
-                           (self.endPoint[1]+self.startPoint[1])/2,
-                           (self.endPoint[2]+self.startPoint[2])/2), ORIGIN)
+    linecenter = project3dToPixelPosition((self.endPoint+self.startPoint)/2,
+                                          ORIGIN)
     pygame.draw.aaline(tempSurfaceObj, self.color,
                        (positions[0][0]-linecenter[0]+tempSurfaceObjCenter[0],
                         positions[0][1]-linecenter[1]+tempSurfaceObjCenter[1]),
@@ -831,13 +895,13 @@ class Straight(PathPiece):
                            else self.endPoint
 
   def setEndPos3d(self, newPos, setActiveEnd):
-    self.noTuplesPlease()
+    #self.noTuplesPlease()
     if (self.activeEnd==0 and setActiveEnd) or  \
        (self.activeEnd==1 and not setActiveEnd):
-      self.startPoint = [i for i in newPos]
+      self.startPoint = Point3D.copy(newPos)
     else:
-      self.endPoint = [i for i in newPos]
-    self.center = [.5*(i+j) for i,j in zip(self.startPoint, self.endPoint)]
+      self.endPoint = Point3D.copy(newPos)
+    self.center = (self.startPoint + self.endPoint)/2
     self.render()
 
   def draw(self, screen):
@@ -856,11 +920,11 @@ class HelixArc(PathPiece):
   def __init__(self,
                startHeight=-40., endHeight=40.,
                startAngle=0., endAngle=360.,
-               radius=50., center=[0,0,0],
+               radius=50., center=Point3D(),
                rightHanded=True, color=(0,0,255),
                gamma=1.):
     super(HelixArc, self).__init__()
-    self.center = center[:]
+    self.center = Point3D.copy(center)
     self.centershift = [0,0]
     self.color = color
     self.startAngle, self.endAngle = startAngle, endAngle
@@ -877,7 +941,7 @@ class HelixArc(PathPiece):
 
   def shelve(self):
     """Save a HelixArc instance to file"""
-    d = [self.center[:],
+    d = [self.center,
          self.centershift[:],
          self.color[:],
          self.startAngle,
@@ -929,10 +993,10 @@ class HelixArc(PathPiece):
             ((height-self.startHeight)/(self.endHeight-self.startHeight)) ** \
               (1./self.gamma)
       # Enable drawing in low and high resolution
-      self.points3dHD.append((x,y,z))
+      self.points3dHD.append(Point3D(x,y,z))
       # Ensure that the first and last point are in the low res samples
       if step % 10 == 0 or step == steps-1:
-        self.points3d.append((x,y,z))
+        self.points3d.append(Point3D(x,y,z))
       angle += anglestep
       height += heightstep
     self.activeEnd = 0
@@ -943,19 +1007,19 @@ class HelixArc(PathPiece):
                             else self.points3d[-1]
 
   def setEndPos3d(self, newPos, setActiveEnd):
-    self.noTuplesPlease()
+    #self.noTuplesPlease()
     endIndexInPoints3d = 0 if (self.activeEnd==0 and setActiveEnd) or  \
                               (self.activeEnd==1 and not setActiveEnd) \
                            else -1
-    hDelta = newPos[2] - self.points3d[endIndexInPoints3d][2]
+    hDelta = newPos.z - self.points3d[endIndexInPoints3d].z
     if setActiveEnd:
       self.startHeight += .25*hDelta
       self.endHeight   -= .5*hDelta
-      self.center[2]   += .5*hDelta
+      self.center.z    += .5*hDelta
     else:
       self.startHeight -= .5*hDelta
       self.endHeight   += .25*hDelta
-      self.center[2]   += .5*hDelta
+      self.center.z    += .5*hDelta
     self.recompute()
     self.render(True)
 
@@ -982,7 +1046,7 @@ class HelixArc(PathPiece):
     pixels = []
     for p in points:
       px, py = project3dToPixelPosition(p, (0,0))
-      pixels.append(((px,py), p[2]+self.center[2]))
+      pixels.append(((px,py), p.z+self.center.z))
       minx=min(minx,px)
       miny=min(miny,py)
       maxx=max(maxx,px)
@@ -1054,11 +1118,11 @@ class HelixArc(PathPiece):
     """
     if self.selected:
       pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
-      ppos = project3dToPixelPosition([i+j for i,j in zip(pos,self.center)])
+      ppos = project3dToPixelPosition(pos + self.center)
       self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
       pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
-      ppos = project3dToPixelPosition([i+j for i,j in zip(pos,self.center)])
+      ppos = project3dToPixelPosition(pos + self.center)
       self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                   int(ppos[1])-CLICK_TOLERANCE_RADIUS)
       screen.blit(markring, self.activeEndPixelPos)
@@ -1193,8 +1257,8 @@ def project3dToPixelPosition(c, origin=ORIGIN):
   #          [ -right- ]T    [ | ]
   # result = [ -front- ]  *  [ c ]
   #          [ --up--- ]     [ | ]
-  result = [c[0] * right[0] + c[1] * front[0] + c[2] * up[0],
-            c[0] * right[1] + c[1] * front[1] + c[2] * up[1]]
+  result = [c.x * right[0] + c.y * front[0] + c.z * up[0],
+            c.x * right[1] + c.y * front[1] + c.z * up[1]]
   result[0] *= zoom
   result[1] *= zoom
   # Compensate for pixel shift (window center is world center)
@@ -1222,7 +1286,7 @@ def unprojectPixelTo3dPosition(p, origin=ORIGIN, height=0.):
       (1. - (front[0]*right[1])/(right[0]*front[1]))
   x = ((p[0]-origin[0])/zoom - height*up[0] - y*front[0]) / right[0]
   z = height
-  point3d = (x, y, z)
+  point3d = Point3D(x, y, z)
   return point3d
 
 
@@ -1234,9 +1298,9 @@ def drawPotentialConnectionLine(p1, p2, screen):
 
 def drawHelpLines(pos3D, screen, toOrigin=True):
   """Draw 3D orientation help lines"""
-  positions = [project3dToPixelPosition((0, 0, 0)),
-               project3dToPixelPosition((pos3D[0], 0, 0)),
-               project3dToPixelPosition((pos3D[0], pos3D[1], 0)),
+  positions = [project3dToPixelPosition(Point3D(0, 0, 0)),
+               project3dToPixelPosition(Point3D(pos3D.x, 0, 0)),
+               project3dToPixelPosition(Point3D(pos3D.x, pos3D.y, 0)),
                project3dToPixelPosition(pos3D)]
   min_x = int(min([p[0] for p in positions]))
   max_x = int(max([p[0] for p in positions]))
@@ -1282,11 +1346,11 @@ def render_background():
   # Render grid lines
   for i in range(21):
     pygame.draw.aaline(BGSurfaceObj, (255,255,255),
-                       project3dToPixelPosition(((i-10)*50,-500, 0)),
-                       project3dToPixelPosition(((i-10)*50, 500, 0)))
+                       project3dToPixelPosition(Point3D((i-10)*50,-500, 0)),
+                       project3dToPixelPosition(Point3D((i-10)*50, 500, 0)))
     pygame.draw.aaline(BGSurfaceObj, (255,255,255),
-                       project3dToPixelPosition((-500, (i-10)*50, 0)),
-                       project3dToPixelPosition(( 500, (i-10)*50, 0)))
+                       project3dToPixelPosition(Point3D(-500, (i-10)*50, 0)),
+                       project3dToPixelPosition(Point3D( 500, (i-10)*50, 0)))
   return BGSurfaceObj
 
 
@@ -1410,7 +1474,7 @@ def drawHelpDebugInfoMessages(screen, rerender=False,
     pos = so.center
     ppos = project3dToPixelPosition(pos)
     # Render info text at (and about) position (3D -> pixels)
-    text = '(%.1f, %.1f, %.1f) -> (%d, %d)'%(pos[0], pos[1], pos[2],
+    text = '(%.1f, %.1f, %.1f) -> (%d, %d)'%(pos.x, pos.y, pos.z,
                                              ppos[0], ppos[1])
     textObj = pygame.font.SysFont(None, 18).render(text, True, (0, 0, 0))
     textRect = textObj.get_rect()
@@ -1564,17 +1628,18 @@ def main():
   ### DEBUG
   objectsList.append(HelixArc(startHeight=-40., endHeight=140.,
                                startAngle=180., endAngle=360.,
-                               radius=50., center=[0,0,0],
+                               radius=50., center=Point3D(),
                                rightHanded=True, color=(0,0,255),
                                gamma=1.))
   objectsList.append(HelixArc(startHeight=20., endHeight=140.,
                                startAngle=-360., endAngle=360.,
-                               radius=100., center=[0,100,0],
+                               radius=100., center=Point3D(0,100,0),
                                rightHanded=False, color=(0,0,255),
                                gamma=1.))
 
   # Prerender font object
-  toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.', True, (0,0,0))
+  toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.',
+                                                            True, (0,0,0))
 
   # Global frame counter
   totalFrameCount = 0
@@ -1701,6 +1766,8 @@ def main():
             dragStartedOnSelectedObject) and \
             idleClick:
             undoHistory.pop()
+            if not undoHistory:
+              getObjectByName('undoButton').disable()
         if lmbLastTick and \
            not boxSelectionInProgress and \
            not dragStartedOnGUI and \
@@ -1865,9 +1932,9 @@ def main():
         # Motion along z-axis
         if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
           for so in selectedObjects:
-            so.moveTo([so.center[0],
-                       so.center[1],
-                       so.center[2]-mouseRelativeMotionThisTick[1]])
+            so.moveTo(Point3D(so.center.x,
+                              so.center.y,
+                              so.center.z-mouseRelativeMotionThisTick[1]))
         # Motion along (z=0)-plane
         else:
           for so in selectedObjects:
@@ -1888,9 +1955,9 @@ def main():
             # Change a HelixArc's HEIGHT using the SHIFT key
             elif pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
               pos = so.getEndPoint3d(dragStartedOnActiveEnd)
-              pos = [pos[0],
-                     pos[1],
-                     pos[2]-mouseRelativeMotionThisTick[1]]
+              pos = Point3D(pos.x,
+                            pos.y,
+                            pos.z-mouseRelativeMotionThisTick[1])
               so.setEndPos3d(pos, dragStartedOnActiveEnd)
             # Change a HelixArc's LENGTH using the CTRL key
             elif pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
@@ -1902,14 +1969,14 @@ def main():
             # Move endpoint along z-axis
             if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
               pos = so.getEndPoint3d(dragStartedOnActiveEnd)
-              pos = [pos[0],
-                     pos[1],
-                     pos[2]-mouseRelativeMotionThisTick[1]]
+              pos = Point3D(pos.x,
+                            pos.y,
+                            pos.z-mouseRelativeMotionThisTick[1])
               so.setEndPos3d(pos, dragStartedOnActiveEnd)
             #elif pressedKeys[pygame.K_RCTRL] or pressedKeys[pygame.K_LCTRL]:
             else:
               pos = so.getEndPoint3d(dragStartedOnActiveEnd)
-              z = pos[2]
+              z = pos.z
               ppos = project3dToPixelPosition(pos)
               ppos[0] += mouseRelativeMotionThisTick[0]
               ppos[1] += mouseRelativeMotionThisTick[1]
@@ -1947,12 +2014,10 @@ def main():
         drawHelpLines(so.getEndPoint3d(True), screen, False)
         drawHelpLines(so.getEndPoint3d(False), screen, False)
       elif isinstance(so, HelixArc):
-        drawHelpLines([i+j for i,j in zip(so.getEndPoint3d(True),
-                                          so.center)],
+        drawHelpLines(so.getEndPoint3d(True) + so.center,
                       screen,
                       False)
-        drawHelpLines([i+j for i,j in zip(so.getEndPoint3d(False),
-                                          so.center)],
+        drawHelpLines(so.getEndPoint3d(False) + so.center,
                       screen,
                       False)
 
