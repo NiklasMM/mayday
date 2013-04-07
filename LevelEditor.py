@@ -95,6 +95,8 @@ markring = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
                            2*CLICK_TOLERANCE_RADIUS+1))
 markdot  = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
                            2*CLICK_TOLERANCE_RADIUS+1))
+markrectangle = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
+                                2*CLICK_TOLERANCE_RADIUS+1))
 
 # A list of all on-screen objects (including buttons!)
 objectsList = []
@@ -190,6 +192,23 @@ class Point3D(object):
     self.y -= other.y
     self.z -= other.z
 
+  def __mul__(self, other):
+    """self * other"""
+    if not isinstance(other, (int, long, float)):
+      raise TypeError
+    if isinstance(other, float):
+      return Point3D(self.x * other,
+                     self.y * other,
+                     self.z * other)
+    else:
+      return Point3D(self.x * float(other),
+                     self.y * float(other),
+                     self.z * float(other))
+
+  def __rmul__(self, other):
+    """other * self"""
+    return self.__mul__(other)
+
   def __div__(self, other):
     """self / other"""
     if not isinstance(other, (int, long, float)):
@@ -202,6 +221,9 @@ class Point3D(object):
       return Point3D(self.x / float(other),
                      self.y / float(other),
                      self.z / float(other))
+
+  def __str__(self):
+    return "(%f, %f, %f)" % (self.x, self.y, self.z)
 
 
 class DisplayedObject(object):
@@ -789,11 +811,11 @@ class PathPiece(ClickRegisteringObject):
     return (mousePos[0]-CLICK_TOLERANCE_RADIUS-ppos[0])**2 + \
            (mousePos[1]-CLICK_TOLERANCE_RADIUS-ppos[1])**2   < CLICK_TOLERANCE_RADIUS**2-1
 
-  def noTuplesPlease(self):
-    """BUGFIX FUNCTION: Asserts that self.center is NOT a tuple"""
-    if isinstance(self.center, tuple):
-      logging.debug("CAUTION: %s.noTuplesPlease() fired!" % self.__class__.__name__)
-      self.center = [i for i in self.center]
+  #def noTuplesPlease(self):
+  #  """BUGFIX FUNCTION: Asserts that self.center is NOT a tuple"""
+  #  if isinstance(self.center, tuple):
+  #    logging.debug("CAUTION: %s.noTuplesPlease() fired!" % self.__class__.__name__)
+  #    self.center = [i for i in self.center]
 
 
 
@@ -936,6 +958,7 @@ class HelixArc(PathPiece):
     ## The gamma value controls the gradient of the HelixArc's steepness
     #  It's called "gamma" because it follows a gamma correction-style curve
     self.gamma = gamma
+    self.activeEnd = 0
     self.recompute()
     self.render()
 
@@ -982,7 +1005,7 @@ class HelixArc(PathPiece):
     steps = min(2500, steps)
     heightstep = (self.endHeight-self.startHeight)/steps
     anglestep = (self.endAngle-self.startAngle)/steps
-    # Sample points along the curve
+    """# Sample points along the curve
     for step in range(steps):
       a = angle if self.rightHanded else (360.-angle)
       x = cos(a*(pi/180.))*self.radius
@@ -998,8 +1021,34 @@ class HelixArc(PathPiece):
       if step % 10 == 0 or step == steps-1:
         self.points3d.append(Point3D(x,y,z))
       angle += anglestep
+      height += heightstep"""
+
+    # Bezier curve computation
+    self.points3d = self.points3dHD = []
+    # Control points
+    P0 = Point3D(self.startAngle, self.startHeight,    0.)
+    P1 = Point3D(self.startAngle, self.startHeight+200, 0.)
+    P2 = Point3D(self.endAngle,   self.endHeight-200,   0.)
+    P3 = Point3D(self.endAngle,   self.endHeight,      0.)
+    for step in range(steps+1):
+      t = step/float(steps)
+      # Cubic Bezier curve, explicit formula (en.wikipedia.org: Bezier curve)
+      B =     (1-t)**3        * P0 + \
+          3 * (1-t)**2 * t    * P1 + \
+          3 * (1-t)    * t**2 * P2 + \
+                         t**3 * P3
+      a = B.x if self.rightHanded else (360.-B.x)
+      x = cos(a*(pi/180.))*self.radius
+      y = sin(a*(pi/180.))*self.radius
+      z = B.y
+      # Enable drawing in low and high resolution
+      self.points3dHD.append(Point3D(x,y,z))
+      # Ensure that the first and last point are in the low res samples
+      if step % 10 == 0 or step == steps-1:
+        self.points3d.append(Point3D(x,y,z))
+      angle += anglestep
       height += heightstep
-    self.activeEnd = 0
+
 
   def getEndPoint3d(self, getActiveEnd):
     return self.points3d[0] if (self.activeEnd==0 and getActiveEnd) or  \
@@ -1012,7 +1061,8 @@ class HelixArc(PathPiece):
                               (self.activeEnd==1 and not setActiveEnd) \
                            else -1
     hDelta = newPos.z - self.points3d[endIndexInPoints3d].z
-    if setActiveEnd:
+    if (self.activeEnd==0 and setActiveEnd) or  \
+       (self.activeEnd==1 and not setActiveEnd):
       self.startHeight += .25*hDelta
       self.endHeight   -= .5*hDelta
       self.center.z    += .5*hDelta
@@ -1143,6 +1193,7 @@ def areYouSure(text=None):
                               buttons=gtk.BUTTONS_YES_NO)
   if text is not None:
     pdialog.set_markup(text)
+  #pdialog.format_secondary_text("title")
   response = pdialog.run()
   result = True if response==gtk.RESPONSE_YES else False
   pdialog.destroy()
@@ -1600,6 +1651,15 @@ def main():
     markdot.set_at((CLICK_TOLERANCE_RADIUS+dx,
                     CLICK_TOLERANCE_RADIUS+dy),
                    (255,0,0))
+  for i in range(2*CLICK_TOLERANCE_RADIUS+1):
+    markrectangle.set_at((i, 0),
+                         (255, 0, 0))
+    markrectangle.set_at((0, i),
+                         (255, 0, 0))
+    markrectangle.set_at((i, 2*CLICK_TOLERANCE_RADIUS),
+                         (255, 0, 0))
+    markrectangle.set_at((2*CLICK_TOLERANCE_RADIUS, i),
+                         (255, 0, 0))
 
   # Prerender the button tooltips
   for k, v in TOOLTIP_TEXTS.items():
