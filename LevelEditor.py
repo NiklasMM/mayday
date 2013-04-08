@@ -1029,8 +1029,8 @@ class HelixArc(PathPiece):
     self.points3d = self.points3dHD = []
     # Control points
     P0 = Point3D(self.startAngle, self.startHeight,    0.)
-    P1 = Point3D(self.startAngle, self.startHeight+200, 0.)
-    P2 = Point3D(self.endAngle,   self.endHeight-200,   0.)
+    P1 = Point3D(self.startAngle, self.startHeight,    0.)
+    P2 = Point3D(self.endAngle,   self.endHeight,      0.)
     P3 = Point3D(self.endAngle,   self.endHeight,      0.)
     for step in range(steps+1):
       t = step/float(steps)
