@@ -1346,6 +1346,16 @@ class BezierArc(PathPiece):
     self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
+    # Mark the Bezier control points
+    pos  = self.bezierControlStartPoint
+    ppos = project3dToPixelPosition(pos)
+    self.bezierControlStartPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                       int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+    pos  = self.bezierControlEndPoint
+    ppos = project3dToPixelPosition(pos)
+    self.bezierControlEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                     int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+
     # Draw sample points, using Wu-style antialiasing
     # NOTE that AA is performed using only the alpha channel!
     for p, z in pixels:
