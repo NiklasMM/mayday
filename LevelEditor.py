@@ -1264,6 +1264,18 @@ class BezierArc(PathPiece):
       if step % 10 == 0 or step == steps-1:
         self.points3d.append(B)
 
+  def cursorOnBezierControl(self, mousePos=None, _start=True):
+    if mousePos is None:
+      mousePos = pygame.mouse.get_pos()
+    if not self.rect.collidepoint(mousePos):
+      return False
+    ppos = self.bezierControlStartPixelPos  \
+            if _start                       \
+            else self.bezierControlEndPixelPos
+    print mousePos, ppos
+    return ((mousePos[0]-CLICK_TOLERANCE_RADIUS-ppos[0])**2 + \
+            (mousePos[1]-CLICK_TOLERANCE_RADIUS-ppos[1])**2)  \
+           < CLICK_TOLERANCE_RADIUS**2-1
 
   def getEndPoint3d(self, getActiveEnd):
     return self.points3d[0] if (self.activeEnd==0 and getActiveEnd) or  \
@@ -1271,20 +1283,6 @@ class BezierArc(PathPiece):
                             else self.points3d[-1]
 
   def setEndPos3d(self, newPos, setActiveEnd):
-    #self.noTuplesPlease()
-    """endIndexInPoints3d = 0 if (self.activeEnd==0 and setActiveEnd) or  \
-                              (self.activeEnd==1 and not setActiveEnd) \
-                           else -1
-    hDelta = newPos.z - self.points3d[endIndexInPoints3d].z
-    if (self.activeEnd==0 and setActiveEnd) or  \
-       (self.activeEnd==1 and not setActiveEnd):
-      self.startPoint.z += .25 * hDelta
-      self.endPoint.z   -= .5  * hDelta
-      self.center.z     += .5  * hDelta
-    else:
-      self.startPoint.z -= .5  * hDelta
-      self.endPoint.z   += .25 * hDelta
-      self.center.z     += .5  * hDelta"""
     endIndexInPoints3d = 0 if (self.activeEnd==0 and setActiveEnd) or  \
                               (self.activeEnd==1 and not setActiveEnd) \
                            else -1
@@ -1298,13 +1296,20 @@ class BezierArc(PathPiece):
       self.startPoint -= .5  * delta
       self.endPoint   += .25 * delta
       self.center     += .5  * delta
-    """if (self.activeEnd==0 and setActiveEnd) or  \
-       (self.activeEnd==1 and not setActiveEnd):
-      self.startPoint = Point3D.copy(newPos)
+    self.recompute()
+    self.render(True)
+
+  def getBezierControl(self, getStart):
+    return self.bezierControlStartPoint \
+            if getStart                 \
+            else self.bezierControlEndPoint
+
+  def setBezierControl(self, newPos, setStart):
+    if setStart:
+      self.bezierControlStartPoint = Point3D.copy(newPos)
     else:
-      self.endPoint = Point3D.copy(newPos)
-    self.center = (self.startPoint + self.endPoint)/2
-    self.render()"""
+      self.bezierControlEndPoint   = Point3D.copy(newPos)
+    handle = Point3D.copy(newPos)
     self.recompute()
     self.render(True)
 
@@ -1320,13 +1325,16 @@ class BezierArc(PathPiece):
     minx, miny, maxx, maxy = 9999.,9999.,-9999.,-9999.
     points = self.points3dHD if highdefinition else self.points3d
     pixels = []
-    for p in points:
+    for p in points+[self.startPoint+self.bezierControlStartPoint,
+                     self.endPoint+self.bezierControlEndPoint]:
       px, py = project3dToPixelPosition(p, (0,0))
       pixels.append(((px,py), p.z+self.center.z))
       minx=min(minx,px)
       miny=min(miny,py)
       maxx=max(maxx,px)
       maxy=max(maxy,py)
+    # The Bezier control points should not be drawn as points, so take them out
+    pixels[-2:] = []
     # Padding the image avoids clipping pixels
     pad = CLICK_TOLERANCE_RADIUS
     self.centershift = [(maxx+minx)/2,(maxy+miny)/2]
@@ -1336,23 +1344,20 @@ class BezierArc(PathPiece):
     sfsize=sf.get_size()
     self.surfaceObj = sf
 
-    # Mark the active end
     pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
-    ppos = project3dToPixelPosition(pos)
+    ppos = project3dToPixelPosition(pos + self.center)
     self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                               int(ppos[1])-CLICK_TOLERANCE_RADIUS)
     pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
-    ppos = project3dToPixelPosition(pos)
+    ppos = project3dToPixelPosition(pos + self.center)
     self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
-
-    # Mark the Bezier control points
-    pos  = self.bezierControlStartPoint
-    ppos = project3dToPixelPosition(pos)
+    pos  = self.startPoint+self.bezierControlStartPoint
+    ppos = project3dToPixelPosition(pos + self.center)
     self.bezierControlStartPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                        int(ppos[1])-CLICK_TOLERANCE_RADIUS)
-    pos  = self.bezierControlEndPoint
-    ppos = project3dToPixelPosition(pos)
+    pos  = self.endPoint+self.bezierControlEndPoint
+    ppos = project3dToPixelPosition(pos + self.center)
     self.bezierControlEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                      int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
@@ -1403,7 +1408,7 @@ class BezierArc(PathPiece):
     on the viewing direction.
     """
     if self.selected:
-      pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
+      """pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
       ppos = project3dToPixelPosition(pos + self.center)
       self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
@@ -1411,9 +1416,27 @@ class BezierArc(PathPiece):
       ppos = project3dToPixelPosition(pos + self.center)
       self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                   int(ppos[1])-CLICK_TOLERANCE_RADIUS)
-      screen.blit(markring, self.activeEndPixelPos)
-      screen.blit(markdot, self.activeEndPixelPos)
-      screen.blit(markring, self.inactiveEndPixelPos)
+      pos  = self.startPoint+self.bezierControlStartPoint
+      ppos = project3dToPixelPosition(pos + self.center)
+      self.bezierControlStartPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                         int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+      pos  = self.endPoint+self.bezierControlEndPoint
+      ppos = project3dToPixelPosition(pos + self.center)
+      self.bezierControlEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                       int(ppos[1])-CLICK_TOLERANCE_RADIUS)"""
+
+      drawPotentialConnectionLine(self.startPoint,
+                                  self.startPoint+self.bezierControlStartPoint,
+                                  screen)
+      drawPotentialConnectionLine(self.endPoint,
+                                  self.endPoint+self.bezierControlEndPoint,
+                                  screen)
+
+      screen.blit(markring,       self.activeEndPixelPos)
+      screen.blit(markdot,        self.activeEndPixelPos)
+      screen.blit(markring,       self.inactiveEndPixelPos)
+      screen.blit(markrectangle,  self.bezierControlStartPixelPos)
+      screen.blit(markrectangle,  self.bezierControlEndPixelPos)
     ppos = project3dToPixelPosition(self.center)
     self.rect.center = [ppos[0]+self.centershift[0],
                         ppos[1]+self.centershift[1]]
@@ -1873,11 +1896,13 @@ def main():
   makeGUIButtons()
 
   # Prerender the marker for a path piece's active end
-  global markring, markdot
-  markring = markring.convert_alpha()
-  markdot  = markdot.convert_alpha()
+  global markring, markdot, markrectangle
+  markring      = markring.convert_alpha()
+  markdot       = markdot.convert_alpha()
+  markrectangle = markrectangle.convert_alpha()
   markring.fill((0,0,0,0))
   markdot.fill((0,0,0,0))
+  markrectangle.fill((0,0,0,0))
   for dx,dy in MARK_RING_OFFSETS:
     markring.set_at((CLICK_TOLERANCE_RADIUS+dx,
                      CLICK_TOLERANCE_RADIUS+dy),
@@ -1907,10 +1932,12 @@ def main():
   # Mouse status saved from previous timetick
   lmbLastTick = mmbLastTick = rmbLastTick = False
   # Used for moving objects
-  boxSelectionInProgress = dragStartedOnGUI \
-                         = dragStartedOnSelectedObject \
-                         = dragStartedOnActiveEnd \
-                         = dragStartedOnInactiveEnd \
+  boxSelectionInProgress = dragStartedOnGUI                 \
+                         = dragStartedOnSelectedObject      \
+                         = dragStartedOnActiveEnd           \
+                         = dragStartedOnInactiveEnd         \
+                         = dragStartedOnBezierControlStart  \
+                         = dragStartedOnBezierControlEnd    \
                          = False
   boxStartPoint = (0, 0)
 
@@ -1985,11 +2012,13 @@ def main():
     # Initiate box selection
     if lmbDown and \
        dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD and \
-       not boxSelectionInProgress and \
-       not dragStartedOnGUI and \
-       not dragStartedOnSelectedObject and \
-       not dragStartedOnActiveEnd and \
-       not dragStartedOnInactiveEnd:
+       not boxSelectionInProgress           and \
+       not dragStartedOnGUI                 and \
+       not dragStartedOnSelectedObject      and \
+       not dragStartedOnActiveEnd           and \
+       not dragStartedOnInactiveEnd         and \
+       not dragStartedOnBezierControlStart  and \
+       not dragStartedOnBezierControlEnd:
       deselectObjects()
       boxSelectionInProgress = True
       boxStartPoint = pygame.mouse.get_pos()
@@ -2027,19 +2056,27 @@ def main():
                 o.activate()
                 o.clickAction()
             if not GUIwasClicked:
-              if len(selectedObjects)==1 and selectedObjects[0].cursorOnObject():
-                so = selectedObjects[0]
-                if so.cursorOnEnd(mousePos):
-                  createUndoHistory()
-                  dragStartedOnActiveEnd = True
-                elif so.cursorOnEnd(mousePos, False):
-                  createUndoHistory()
-                  dragStartedOnInactiveEnd = True
-                else:
-                  createUndoHistory()
-                  dragStartedOnSelectedObject = True
-                  infoMessage("dragStartedOnSelectedObject")
-                break
+              if len(selectedObjects)==1:
+                if selectedObjects[0].cursorOnObject():
+                  so = selectedObjects[0]
+                  if so.cursorOnEnd(mousePos):
+                    createUndoHistory()
+                    dragStartedOnActiveEnd = True
+                  elif so.cursorOnEnd(mousePos, False):
+                    createUndoHistory()
+                    dragStartedOnInactiveEnd = True
+                  else:
+                    createUndoHistory()
+                    dragStartedOnSelectedObject = True
+                    infoMessage("dragStartedOnSelectedObject")
+                  break
+                elif isinstance(so, BezierArc):
+                  if so.cursorOnBezierControl(mousePos):
+                    createUndoHistory()
+                    dragStartedOnBezierControlStart = True
+                  elif so.cursorOnBezierControl(mousePos, False):
+                    createUndoHistory()
+                    dragStartedOnBezierControlEnd = True
               else:
                 for so in selectedObjects:
                   if so.cursorOnObject(mousePos):
@@ -2060,22 +2097,28 @@ def main():
       # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
         # If the click was idle, forget the preemptively created history point
-        if (dragStartedOnActiveEnd or \
-            dragStartedOnInactiveEnd or \
-            dragStartedOnSelectedObject) and \
+        if (dragStartedOnActiveEnd              or \
+            dragStartedOnInactiveEnd            or \
+            dragStartedOnSelectedObject         or \
+            dragStartedOnBezierControlStart     or \
+            dragStartedOnBezierControlEnd)     and \
             idleClick:
             undoHistory.pop()
             if not undoHistory:
               getObjectByName('undoButton').disable()
-        if lmbLastTick and \
-           not boxSelectionInProgress and \
-           not dragStartedOnGUI and \
-           not dragStartedOnActiveEnd and \
+        if lmbLastTick                          and \
+           not boxSelectionInProgress           and \
+           not dragStartedOnGUI                 and \
+           not dragStartedOnActiveEnd           and \
+           not dragStartedOnBezierControlStart  and \
+           not dragStartedOnBezierControlEnd    and \
            not dragStartedOnInactiveEnd:
           deselectObjects()
         # Only "click"-select objects (box selection is done later)
-        if not boxSelectionInProgress and \
-           not dragStartedOnActiveEnd and \
+        if not boxSelectionInProgress           and \
+           not dragStartedOnActiveEnd           and \
+           not dragStartedOnBezierControlStart  and \
+           not dragStartedOnBezierControlEnd    and \
            not dragStartedOnInactiveEnd:
           for o in objectsList:
             if o.cursorOnObject(mousePos) and not isinstance(o, Button):
@@ -2093,10 +2136,12 @@ def main():
           deselectObjects()
         # Reset drag distance
         dragManhattanDistance = 0
-        boxSelectionInProgress = dragStartedOnGUI \
-                               = dragStartedOnSelectedObject \
-                               = dragStartedOnActiveEnd \
-                               = dragStartedOnInactiveEnd \
+        boxSelectionInProgress = dragStartedOnGUI                 \
+                               = dragStartedOnSelectedObject      \
+                               = dragStartedOnActiveEnd           \
+                               = dragStartedOnInactiveEnd         \
+                               = dragStartedOnBezierControlStart  \
+                               = dragStartedOnBezierControlEnd    \
                                = False
 
     # Check current status of keyboard keys
@@ -2280,6 +2325,24 @@ def main():
               ppos[1] += mouseRelativeMotionThisTick[1]
               pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
               so.setEndPos3d(pos, dragStartedOnActiveEnd)
+          elif dragStartedOnBezierControlStart or dragStartedOnBezierControlEnd:
+            # Change a BezierArc's control points
+            # Along the z axis
+            if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+              pos = so.getBezierControl(dragStartedOnBezierControlStart)
+              pos = Point3D(pos.x,
+                            pos.y,
+                            pos.z-mouseRelativeMotionThisTick[1])
+              so.setBezierControl(pos, dragStartedOnBezierControlStart)
+            # Within the xy plane
+            else:
+              pos = so.getBezierControl(dragStartedOnBezierControlStart)
+              z = pos.z
+              ppos = project3dToPixelPosition(pos)
+              ppos[0] += mouseRelativeMotionThisTick[0]
+              ppos[1] += mouseRelativeMotionThisTick[1]
+              pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+              so.setBezierControl(pos, dragStartedOnBezierControlStart)
         ## Straights
         elif isinstance(so, Straight):
           if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
