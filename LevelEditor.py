@@ -183,6 +183,7 @@ class Point3D(object):
     self.x += other.x
     self.y += other.y
     self.z += other.z
+    return self
 
   def __isub__(self, other):
     """self -= other"""
@@ -191,6 +192,7 @@ class Point3D(object):
     self.x -= other.x
     self.y -= other.y
     self.z -= other.z
+    return self
 
   def __mul__(self, other):
     """self * other"""
@@ -959,6 +961,7 @@ class HelixArc(PathPiece):
     #  It's called "gamma" because it follows a gamma correction-style curve
     self.gamma = gamma
     self.activeEnd = 0
+    self.bezierControls = []
     self.recompute()
     self.render()
 
@@ -973,8 +976,7 @@ class HelixArc(PathPiece):
          self.endHeight,
          self.rightHanded,
          self.radius,
-         self.activeEndPixelPos[:],
-         self.inactiveEndPixelPos[:],
+         self.activeEnd,
          self.gamma]
     return d
 
@@ -989,9 +991,9 @@ class HelixArc(PathPiece):
     self.endHeight,               \
     self.rightHanded,             \
     self.radius,                  \
-    self.activeEndPixelPos,       \
-    self.inactiveEndPixelPos,     \
+    self.activeEnd,               \
     self.gamma = shelvedData
+    self.recompute()
 
   def recompute(self):
     height, angle = self.startHeight, self.startAngle
@@ -1184,6 +1186,230 @@ class HelixArc(PathPiece):
     screen.blit(self.surfaceObj, self.rect)
 
 
+class BezierArc(PathPiece):
+  # Number of frames to wait until rendering in high resolution
+  _HQFrameDelay = 3
+
+  def __init__(self,
+               startPoint3D=Point3D(),
+               endPoint3D=Point3D(),
+               bezierControlStartPoint3D=Point3D(),
+               bezierControlEndPoint3D=Point3D(),
+               color=(0,0,255)):
+    """Bezier Points are OFFSETS to the respective point!"""
+    super(BezierArc, self).__init__()
+    self.centershift = [0,0]
+    self.color = color
+    self.startPoint = Point3D.copy(startPoint3D)
+    self.endPoint = Point3D.copy(endPoint3D)
+    self.activeEndPixelPos = [0,0]
+    self.inactiveEndPixelPos = [0,0]
+    self.bezierControlStartPixelPos = [0,0]
+    self.bezierControlEndPixelPos = [0,0]
+    self.activeEnd = 0
+    self.bezierControlStartPoint = Point3D.copy(bezierControlStartPoint3D)
+    self.bezierControlEndPoint = Point3D.copy(bezierControlEndPoint3D)
+    self.center = (self.startPoint+self.endPoint)/2
+    self.recompute()
+    self.render()
+
+  def shelve(self):
+    """Save a BezierArc instance to file"""
+    d = [self.center,
+         self.color[:],
+         self.startPoint,
+         self.endPoint,
+         self.bezierControlStartPoint,
+         self.bezierControlEndPoint,
+         self.activeEnd]
+    return d
+
+  def unshelve(self, shelvedData):
+    """Load a BezierArc instance from file"""
+    self.center,                  \
+    self.color,                   \
+    self.startPoint,              \
+    self.endPoint,                \
+    self.bezierControlStartPoint, \
+    self.bezierControlEndPoint,   \
+    self.activeEnd = shelvedData
+    self.recompute()
+
+  def recompute(self):
+    self.points3d = []
+    self.points3dHD = []
+    step = 0
+    steps = 100
+    # Avoid nasty divide-by-zero errors
+    steps = max(100, steps)
+    # Limit the number of samples to avoid lag
+    steps = min(2500, steps)
+    # Bezier curve computation
+    self.points3d = self.points3dHD = []
+    # Control points
+    P0 = self.startPoint
+    P1 = self.startPoint + self.bezierControlStartPoint
+    P2 = self.endPoint + self.bezierControlEndPoint
+    P3 = self.endPoint
+    for step in range(steps+1):
+      t = step/float(steps)
+      # Cubic Bezier curve, explicit formula (en.wikipedia.org: Bezier curve)
+      B =     (1-t)**3        * P0 + \
+          3 * (1-t)**2 * t    * P1 + \
+          3 * (1-t)    * t**2 * P2 + \
+                         t**3 * P3
+      # Enable drawing in low and high resolution
+      self.points3dHD.append(B)
+      # Ensure that the first and last point are in the low res samples
+      if step % 10 == 0 or step == steps-1:
+        self.points3d.append(B)
+
+
+  def getEndPoint3d(self, getActiveEnd):
+    return self.points3d[0] if (self.activeEnd==0 and getActiveEnd) or  \
+                               (self.activeEnd==1 and not getActiveEnd) \
+                            else self.points3d[-1]
+
+  def setEndPos3d(self, newPos, setActiveEnd):
+    #self.noTuplesPlease()
+    """endIndexInPoints3d = 0 if (self.activeEnd==0 and setActiveEnd) or  \
+                              (self.activeEnd==1 and not setActiveEnd) \
+                           else -1
+    hDelta = newPos.z - self.points3d[endIndexInPoints3d].z
+    if (self.activeEnd==0 and setActiveEnd) or  \
+       (self.activeEnd==1 and not setActiveEnd):
+      self.startPoint.z += .25 * hDelta
+      self.endPoint.z   -= .5  * hDelta
+      self.center.z     += .5  * hDelta
+    else:
+      self.startPoint.z -= .5  * hDelta
+      self.endPoint.z   += .25 * hDelta
+      self.center.z     += .5  * hDelta"""
+    endIndexInPoints3d = 0 if (self.activeEnd==0 and setActiveEnd) or  \
+                              (self.activeEnd==1 and not setActiveEnd) \
+                           else -1
+    delta = newPos - self.points3d[endIndexInPoints3d]
+    if (self.activeEnd==0 and setActiveEnd) or  \
+       (self.activeEnd==1 and not setActiveEnd):
+      self.startPoint += .25 * delta
+      self.endPoint   -= .5  * delta
+      self.center     += .5  * delta
+    else:
+      self.startPoint -= .5  * delta
+      self.endPoint   += .25 * delta
+      self.center     += .5  * delta
+    """if (self.activeEnd==0 and setActiveEnd) or  \
+       (self.activeEnd==1 and not setActiveEnd):
+      self.startPoint = Point3D.copy(newPos)
+    else:
+      self.endPoint = Point3D.copy(newPos)
+    self.center = (self.startPoint + self.endPoint)/2
+    self.render()"""
+    self.recompute()
+    self.render(True)
+
+  def moveTo(self, newPos):
+    super(BezierArc, self).moveTo(newPos)
+    self.render(True)
+
+  def render(self, highdefinition=False):
+    """
+    If highdefinition is FALSE, the HelixArc will be rendered using 100 sample
+    points. If highdefinition is TRUE, 1000 points will be used instead.
+    """
+    minx, miny, maxx, maxy = 9999.,9999.,-9999.,-9999.
+    points = self.points3dHD if highdefinition else self.points3d
+    pixels = []
+    for p in points:
+      px, py = project3dToPixelPosition(p, (0,0))
+      pixels.append(((px,py), p.z+self.center.z))
+      minx=min(minx,px)
+      miny=min(miny,py)
+      maxx=max(maxx,px)
+      maxy=max(maxy,py)
+    # Padding the image avoids clipping pixels
+    pad = CLICK_TOLERANCE_RADIUS
+    self.centershift = [(maxx+minx)/2,(maxy+miny)/2]
+    sf = pygame.Surface((maxx-minx+2*pad,maxy-miny+2*pad))
+    sf = sf.convert_alpha()
+    sf.fill((0,0,0,0))
+    sfsize=sf.get_size()
+    self.surfaceObj = sf
+
+    # Mark the active end
+    pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
+    ppos = project3dToPixelPosition(pos)
+    self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                              int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+    pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
+    ppos = project3dToPixelPosition(pos)
+    self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+
+    # Draw sample points, using Wu-style antialiasing
+    # NOTE that AA is performed using only the alpha channel!
+    for p, z in pixels:
+      # Color pixels that are "below" the (z=0)-plane differently
+      drawcolor = self.color if z >= 0 \
+                             else (127,127,255)
+      xint, xfrac = divmod(p[0], 1)
+      yint, yfrac = divmod(p[1], 1)
+
+      if 0 <= int(xint)-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)-int(minx)+pad,int(yint)-int(miny)+pad))
+        c.r, c.g, c.b = drawcolor
+        c.a=max(c.a,int(255*(1.-xfrac)*(1.-yfrac)))
+        sf.set_at((int(xint)-int(minx)+pad,int(yint)-int(miny)+pad),c)
+
+      if 0 <= int(xint)+1-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)+1-int(minx)+pad,int(yint)-int(miny)+pad))
+        c.r, c.g, c.b = drawcolor
+        c.a=max(c.a,int(255*(xfrac)*(1.-yfrac)))
+        sf.set_at((int(xint)+1-int(minx)+pad,int(yint)-int(miny)+pad),c)
+
+      if 0 <= int(xint)-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)+1-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)-int(minx)+pad,int(yint)+1-int(miny)+pad))
+        c.r, c.g, c.b = drawcolor
+        c.a=max(c.a,int(255*(1.-xfrac)*(yfrac)))
+        sf.set_at((int(xint)-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
+
+      if 0 <= int(xint)+1-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)+1-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad))
+        c.r, c.g, c.b = drawcolor
+        c.a=max(c.a,int(255*(xfrac)*(yfrac)))
+        sf.set_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
+
+    r = sf.get_rect()
+    r.center = [ORIGIN[0]+self.centershift[0], ORIGIN[1]+self.centershift[1]]
+    self.rect = r
+
+  def draw(self, screen):
+    """
+    The BezierArc needs special treatment, as its boundingbox depends heavily
+    on the viewing direction.
+    """
+    if self.selected:
+      pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
+      ppos = project3dToPixelPosition(pos + self.center)
+      self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+      pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
+      ppos = project3dToPixelPosition(pos + self.center)
+      self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                  int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+      screen.blit(markring, self.activeEndPixelPos)
+      screen.blit(markdot, self.activeEndPixelPos)
+      screen.blit(markring, self.inactiveEndPixelPos)
+    ppos = project3dToPixelPosition(self.center)
+    self.rect.center = [ppos[0]+self.centershift[0],
+                        ppos[1]+self.centershift[1]]
+    screen.blit(self.surfaceObj, self.rect)
+
+
 #_______________________________________________________________________
 
 
@@ -1217,13 +1443,12 @@ def deserializeScene(data):
   """Reconstruct PathPiece instances from serialized data"""
   global objectsList
   classes = {'Straight': Straight,
-             'HelixArc': HelixArc}
+             'HelixArc': HelixArc,
+             'BezierArc': BezierArc}
   for classname, shelvedObj in data:
     o = classes[classname]()
     o.unshelve(shelvedObj)
     objectsList.append(o)
-    if classname == 'HelixArc':
-      o.recompute()
     o.render(True)
 
 def createUndoHistory(newstep=True):
@@ -1686,7 +1911,7 @@ def main():
   framesWithoutRerendering = 0
 
   ### DEBUG
-  objectsList.append(HelixArc(startHeight=-40., endHeight=140.,
+  """objectsList.append(HelixArc(startHeight=-40., endHeight=140.,
                                startAngle=180., endAngle=360.,
                                radius=50., center=Point3D(),
                                rightHanded=True, color=(0,0,255),
@@ -1695,7 +1920,11 @@ def main():
                                startAngle=-360., endAngle=360.,
                                radius=100., center=Point3D(0,100,0),
                                rightHanded=False, color=(0,0,255),
-                               gamma=1.))
+                               gamma=1.))"""
+  objectsList.append(BezierArc(startPoint3D=Point3D(100,0,-50),
+                               endPoint3D=Point3D(-100,0,50),
+                               bezierControlStartPoint3D=Point3D(0,50,0),
+                               bezierControlEndPoint3D=Point3D(0,-50,0)))
 
   # Prerender font object
   toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.',
@@ -2023,6 +2252,24 @@ def main():
             elif pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
               so.changeAngles(mouseRelativeMotionThisTick,
                               dragStartedOnActiveEnd)
+        ## BezierArcs
+        if isinstance(so, BezierArc):
+          if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
+            # Change a BezierArc's HEIGHT using the SHIFT key
+            if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+              pos = so.getEndPoint3d(dragStartedOnActiveEnd)
+              pos = Point3D(pos.x,
+                            pos.y,
+                            pos.z-mouseRelativeMotionThisTick[1])
+              so.setEndPos3d(pos, dragStartedOnActiveEnd)
+            else:
+              pos = so.getEndPoint3d(dragStartedOnActiveEnd)
+              z = pos.z
+              ppos = project3dToPixelPosition(pos)
+              ppos[0] += mouseRelativeMotionThisTick[0]
+              ppos[1] += mouseRelativeMotionThisTick[1]
+              pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+              so.setEndPos3d(pos, dragStartedOnActiveEnd)
         ## Straights
         elif isinstance(so, Straight):
           if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
