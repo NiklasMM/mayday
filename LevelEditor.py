@@ -1425,11 +1425,11 @@ class BezierArc(PathPiece):
       self.bezierControlEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                        int(ppos[1])-CLICK_TOLERANCE_RADIUS)"""
 
-      drawPotentialConnectionLine(self.startPoint,
-                                  self.startPoint+self.bezierControlStartPoint,
+      drawPotentialConnectionLine(self.startPoint+self.center,
+                                  self.startPoint+self.center+self.bezierControlStartPoint,
                                   screen)
-      drawPotentialConnectionLine(self.endPoint,
-                                  self.endPoint+self.bezierControlEndPoint,
+      drawPotentialConnectionLine(self.endPoint+self.center,
+                                  self.endPoint+self.center+self.bezierControlEndPoint,
                                   screen)
 
       screen.blit(markring,       self.activeEndPixelPos)
