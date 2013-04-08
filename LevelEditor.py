@@ -123,8 +123,12 @@ TOOLTIP_TEXTS = {
                  "AppendStraightButton":
                   "Append a straight path piece to a selected path piece",
                  "AddHelixArcButton":
-                  "Add a curved path piece",
+                  "Add a spiral path piece",
                  "AppendHelixArcButton":
+                  "Append a spiral path piece to a selected path piece",
+                 "AddBezierArcButton":
+                  "Add a curved path piece with adjustable control points",
+                 "AppendBezierArcButton":
                   "Append a curved path piece to a selected path piece",
                  "ChangeActiveEndButton":
                   "Switch between the active ends of a path piece",
@@ -483,6 +487,67 @@ class AppendHelixArcButton(Button):
 
   def tooltip(self, screen, mousePos=None):
     super(AppendHelixArcButton, self).tooltip(screen, mousePos, "AppendHelixArcButton")
+
+
+class AddBezierArcButton(Button):
+  def __init__(self, name="AddBezierArcButton", buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/addbezierarc.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/addbezierarcClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/addbezierarcHighlighted.png'.format(SCRIPT_PATH))
+    super(AddBezierArcButton, self).__init__(name,
+                                             buttonRect,
+                                             img,
+                                             clickedImg,
+                                             highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(AddBezierArcButton, self).clickAction()
+    except:
+      return None
+    createUndoHistory()
+    global objectsList
+    objectsList.append(BezierArc())
+    objectsList[-1].render(True)
+    infoMessage("BezierArc object added.")
+
+  def tooltip(self, screen, mousePos=None):
+    super(AddBezierArcButton, self).tooltip(screen, mousePos, "AddBezierArcButton")
+
+
+class AppendBezierArcButton(Button):
+  def __init__(self, name="AppendBezierArcButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/appendbezierarc.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/appendbezierarcClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/appendbezierarcHighlighted.png'.format(SCRIPT_PATH))
+    super(AppendBezierArcButton, self).__init__(name,
+                                                buttonRect,
+                                                img,
+                                                clickedImg,
+                                                highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(AppendBezierArcButton, self).clickAction()
+    except:
+      return None
+    createUndoHistory()
+    if not selectedObjects:
+      infoMessage("must select a single path piece to append (none selected)")
+    elif len(selectedObjects) > 1:
+      infoMessage("must select a single path piece to append (%d selected)" % len(selectedObjects))
+    else:
+      infoMessage("I am not doing anything =(")
+
+  def tooltip(self, screen, mousePos=None):
+    super(AppendBezierArcButton, self).tooltip(screen, mousePos, "AppendBezierArcButton")
 
 
 class ChangeActiveEndButton(Button):
@@ -1191,10 +1256,10 @@ class BezierArc(PathPiece):
   _HQFrameDelay = 3
 
   def __init__(self,
-               startPoint3D=Point3D(),
-               endPoint3D=Point3D(),
-               bezierControlStartPoint3D=Point3D(),
-               bezierControlEndPoint3D=Point3D(),
+               startPoint3D=Point3D(50,0,0),
+               endPoint3D=Point3D(-50,0,0),
+               bezierControlStartPoint3D=Point3D(0,50,0),
+               bezierControlEndPoint3D=Point3D(0,-50,0),
                color=(0,0,255)):
     """Bezier Points are OFFSETS to the respective point!"""
     super(BezierArc, self).__init__()
@@ -1682,10 +1747,14 @@ def makeGUIButtons():
                 (WINDOW_SIZE[0], 50)),
              (AppendHelixArcButton, "appendHelixArcButton",
                 (WINDOW_SIZE[0]-50, 50)),
-             (ChangeActiveEndButton, "changeActiveEndButton",
+             (AddBezierArcButton, "addBezierArcButton",
                 (WINDOW_SIZE[0], 100)),
-             (DeleteObjectsButton, "deleteObjectsButton",
+             (AppendBezierArcButton, "appendBezierArcButton",
+                (WINDOW_SIZE[0]-50, 100)),
+             (ChangeActiveEndButton, "changeActiveEndButton",
                 (WINDOW_SIZE[0], 150)),
+             (DeleteObjectsButton, "deleteObjectsButton",
+                (WINDOW_SIZE[0], 200)),
              (UndoButton, "undoButton",
                 (WINDOW_SIZE[0]//2,0)),
              (RedoButton, "redoButton",
@@ -1703,6 +1772,7 @@ def makeGUIButtons():
   objectsList.extend(buttons)
   getObjectByName("appendStraightButton").disable()
   getObjectByName("appendHelixArcButton").disable()
+  getObjectByName("appendBezierArcButton").disable()
   getObjectByName("deleteObjectsButton").disable()
   getObjectByName("undoButton").disable()
   getObjectByName("redoButton").disable()
@@ -1957,11 +2027,11 @@ def main():
                                startAngle=-360., endAngle=360.,
                                radius=100., center=Point3D(0,100,0),
                                rightHanded=False, color=(0,0,255),
-                               gamma=1.))"""
+                               gamma=1.))
   objectsList.append(BezierArc(startPoint3D=Point3D(100,0,-50),
                                endPoint3D=Point3D(-100,0,50),
                                bezierControlStartPoint3D=Point3D(0,50,0),
-                               bezierControlEndPoint3D=Point3D(0,-50,0)))
+                               bezierControlEndPoint3D=Point3D(0,-50,0)))"""
 
   # Prerender font object
   toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.',
@@ -2445,10 +2515,12 @@ def main():
     if not selectedObjects or len(selectedObjects) != 1:
       getObjectByName('appendStraightButton').disable()
       getObjectByName('appendHelixArcButton').disable()
+      getObjectByName('appendBezierArcButton').disable()
       getObjectByName('changeActiveEndButton').disable()
     else:
       getObjectByName('appendStraightButton').enable()
       getObjectByName('appendHelixArcButton').enable()
+      getObjectByName('appendBezierArcButton').enable()
       getObjectByName('changeActiveEndButton').enable()
 
     if not selectedObjects:
