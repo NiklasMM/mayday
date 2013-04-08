@@ -1091,7 +1091,6 @@ class HelixArc(PathPiece):
       height += heightstep"""
 
     # Bezier curve computation
-    self.points3d = self.points3dHD = []
     # Control points
     P0 = Point3D(self.startAngle, self.startHeight,    0.)
     P1 = Point3D(self.startAngle, self.startHeight,    0.)
@@ -1304,13 +1303,14 @@ class BezierArc(PathPiece):
     self.points3d = []
     self.points3dHD = []
     step = 0
-    steps = 100
+    steps = 500
     # Avoid nasty divide-by-zero errors
     steps = max(100, steps)
     # Limit the number of samples to avoid lag
     steps = min(2500, steps)
     # Bezier curve computation
-    self.points3d = self.points3dHD = []
+    self.points3d = []
+    self.points3dHD = []
     # Control points
     P0 = self.startPoint
     P1 = self.startPoint + self.bezierControlStartPoint
@@ -1326,7 +1326,7 @@ class BezierArc(PathPiece):
       # Enable drawing in low and high resolution
       self.points3dHD.append(B)
       # Ensure that the first and last point are in the low res samples
-      if step % 10 == 0 or step == steps-1:
+      if step % 10 == 0 or step == steps:
         self.points3d.append(B)
 
   def cursorOnBezierControl(self, mousePos=None, _start=True):
@@ -2325,7 +2325,7 @@ def main():
     if pressedKeys[pygame.K_DELETE] and selectedObjects:
       getObjectByName('deleteObjectsButton').clickAction(True)
 
-    # Change a HelixArc's curve gamma
+    """# Change a HelixArc's curve gamma
     if len(selectedObjects)==1 and isinstance(selectedObjects[0], HelixArc):
       so = selectedObjects[0]
       if pressedKeys[pygame.K_m]:
@@ -2337,7 +2337,7 @@ def main():
         so.recompute()
         so.render(True)
         so.gamma *= .96
-        so.gamma = max(.05, min(9., so.gamma))
+        so.gamma = max(.05, min(9., so.gamma))"""
 
     ## Move things using the mouse
     if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
@@ -2446,9 +2446,9 @@ def main():
 
     # Render HelixArcs in good quality if the scene is stationary
     if framesWithoutRerendering == HelixArc._HQFrameDelay:
-      infoMessage("Rendering HelixArcs in HD...")
+      infoMessage("Rendering in HD...")
       for o in objectsList:
-        if isinstance(o, HelixArc):
+        if isinstance(o, HelixArc) or isinstance(o, BezierArc):
           o.render(True)
 
     # Save keyboard state for next tick
