@@ -1353,12 +1353,12 @@ class BezierArc(PathPiece):
     delta = newPos - self.points3d[endIndexInPoints3d]
     if (self.activeEnd==0 and setActiveEnd) or  \
        (self.activeEnd==1 and not setActiveEnd):
-      self.startPoint += .25 * delta
+      self.startPoint += .5 * delta
       self.endPoint   -= .5  * delta
       self.center     += .5  * delta
     else:
       self.startPoint -= .5  * delta
-      self.endPoint   += .25 * delta
+      self.endPoint   += .5 * delta
       self.center     += .5  * delta
     self.recompute()
     self.render(True)
@@ -1667,11 +1667,11 @@ def unprojectPixelTo3dPosition(p, origin=ORIGIN, height=0.):
 
 def drawPotentialConnectionLine(p1, p2, screen):
   # Yes, this is really not how that was intended to be used.
-  s = Straight(p1,p2)
+  s = Straight(p1, p2, (255,100,100))
   s.draw(screen)
 
 
-def drawHelpLines(pos3D, screen, toOrigin=True):
+def drawHelpLines(pos3D, screen, color=(0,0,0)):
   """Draw 3D orientation help lines"""
   positions = [project3dToPixelPosition(Point3D(0, 0, 0)),
                project3dToPixelPosition(Point3D(pos3D.x, 0, 0)),
@@ -1694,11 +1694,11 @@ def drawHelpLines(pos3D, screen, toOrigin=True):
   line_anchors = [tempSurfaceObjCenter]
   # Draw a path from the origin along the 3 dimensions
   for i in range(3):
-    color = (0, 0, 0, 0)
+    """color = (0, 0, 0, 0)
     if toOrigin:
       color = (0, 0, 127)
     else:
-      color = (127, 127, 127)
+      color = (127, 127, 127)"""
     line_anchors.append((positions[i+1][0]-start[0]+tempSurfaceObjCenter[0],
                          positions[i+1][1]-start[1]+tempSurfaceObjCenter[1]))
     pygame.draw.aaline(tempSurfaceObj, color,
@@ -2494,17 +2494,29 @@ def main():
 
     # Draw help lines to ease positioning selected objects in 3D space
     for so in selectedObjects:
-      drawHelpLines(so.center, screen)
+      #drawHelpLines(so.center, screen)
       if isinstance(so, Straight):
-        drawHelpLines(so.getEndPoint3d(True), screen, False)
-        drawHelpLines(so.getEndPoint3d(False), screen, False)
-      elif isinstance(so, HelixArc):
+        drawHelpLines(so.getEndPoint3d(True),
+                      screen,
+                      (127,127,127))
+        drawHelpLines(so.getEndPoint3d(False),
+                      screen,
+                      (127,127,127))
+      elif isinstance(so, HelixArc) or \
+           isinstance(so, BezierArc):
         drawHelpLines(so.getEndPoint3d(True) + so.center,
                       screen,
-                      False)
+                      (127,127,127))
         drawHelpLines(so.getEndPoint3d(False) + so.center,
                       screen,
-                      False)
+                      (127,127,127))
+      if isinstance(so, BezierArc):
+        drawHelpLines(so.getBezierControl(True)+so.getEndPoint3d(True)+so.center,
+                      screen,
+                      (200,200,200))
+        drawHelpLines(so.getBezierControl(False)+so.getEndPoint3d(False)+so.center,
+                      screen,
+                      (200,200,200))
 
     # Print helpful information and debugging messages (CPU intensive!)
     textRect = toggleDebugTextObj.get_rect()
