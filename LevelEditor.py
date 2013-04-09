@@ -53,27 +53,27 @@ import gtk
 SCRIPT_PATH = os.path.dirname(__file__)
 
 WINDOW_SIZE = [800, 600]
-ORIGIN = [WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2]
-AZIMUTH_ANGULAR_SPEED = 0.05
-ELEVATION_ANGULAR_SPEED = 0.05
-ZOOM_IN_SPEED = 1.05
-ZOOM_OUT_SPEED = 0.95
-MOUSE_AZIMUTH_ANGULAR_SPEED = 0.1
+ORIGIN      = [WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2]
+AZIMUTH_ANGULAR_SPEED         = 0.05
+ELEVATION_ANGULAR_SPEED       = 0.05
+ZOOM_IN_SPEED                 = 1.05
+ZOOM_OUT_SPEED                = 0.95
+MOUSE_AZIMUTH_ANGULAR_SPEED   = 0.1
 MOUSE_ELEVATION_ANGULAR_SPEED = 0.1
-MOUSE_ZOOM_IN_SPEED = 0.1
-MOUSE_ZOOM_OUT_SPEED = 0.1
+MOUSE_ZOOM_IN_SPEED           = 0.1
+MOUSE_ZOOM_OUT_SPEED          = 0.1
 
 # Don't have to hold the mouse perfectly still for "clicks" (vs dragging)
 DRAGGING_DISTANCE_THRESHOLD = 5
 
 # Camera parameters
-azimuth = 315.*(pi/180.)
+azimuth   = 315.*(pi/180.)
 elevation = -66.*(pi/180.)
 # Parts of the orthogonal projection matrix
 right = [cos(azimuth), sin(azimuth) * cos(elevation)]
 front = [sin(azimuth), -cos(azimuth) * cos(elevation)]
-up = [0, sin(elevation)]
-zoom = 1.
+up    = [0, sin(elevation)]
+zoom  = 1.
 
 # Objects register clicks even if the object was not hit with pixel precision.
 # Instead, all pixels within a disk around the cursor are checked.
@@ -81,7 +81,7 @@ zoom = 1.
 CLICK_TOLERANCE_RADIUS  = 5
 CLICK_TOLERANCE_OFFSETS = []
 MARK_RING_OFFSETS = []
-MARK_DOT_OFFSETS = []
+MARK_DOT_OFFSETS  = []
 for y in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
   for x in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
     if x**2+y**2 <= CLICK_TOLERANCE_RADIUS**2+1:
@@ -91,10 +91,10 @@ for y in range(-CLICK_TOLERANCE_RADIUS,CLICK_TOLERANCE_RADIUS+1):
     if x**2+y**2 <= CLICK_TOLERANCE_RADIUS**2-16:
       MARK_DOT_OFFSETS.append((x,y))
 
-markring = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
-                           2*CLICK_TOLERANCE_RADIUS+1))
-markdot  = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
-                           2*CLICK_TOLERANCE_RADIUS+1))
+markring      = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
+                                2*CLICK_TOLERANCE_RADIUS+1))
+markdot       = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
+                                2*CLICK_TOLERANCE_RADIUS+1))
 markrectangle = pygame.Surface((2*CLICK_TOLERANCE_RADIUS+1,
                                 2*CLICK_TOLERANCE_RADIUS+1))
 
@@ -1337,7 +1337,6 @@ class BezierArc(PathPiece):
     ppos = self.bezierControlStartPixelPos  \
             if _start                       \
             else self.bezierControlEndPixelPos
-    print mousePos, ppos
     return ((mousePos[0]-CLICK_TOLERANCE_RADIUS-ppos[0])**2 + \
             (mousePos[1]-CLICK_TOLERANCE_RADIUS-ppos[1])**2)  \
            < CLICK_TOLERANCE_RADIUS**2-1
@@ -1625,7 +1624,9 @@ def compute_projection_parameters(newazimuth, newelevation, newzoom):
   zoom = min(10., max(0.1, newzoom))
 
 
-def project3dToPixelPosition(c, origin=ORIGIN):
+def project3dToPixelPosition(c, origin=None):
+  if origin is None:
+    origin = ORIGIN
   """Computes the 2D pixel screen coordinate for a 3D point"""
   # Isometric projection
   #          [ -right- ]T    [ | ]
@@ -1929,11 +1930,38 @@ def markObject(obj, screen):
   screen.blit(marker, obj.rect)
 
 
+def processResizeEvent(event, screen):
+  """Process a pygame.VIDEORESIZE event"""
+  global WINDOW_SIZE, ORIGIN, objectsList
+  WINDOW_SIZE = event.size
+  ORIGIN      = [WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2]
+  screen      = pygame.display.set_mode( WINDOW_SIZE,
+                                         pygame.RESIZABLE )
+  # Update button positions
+  buttons = (("newSceneButton",         (50, 0)),
+             ("loadSceneButton",        (50, 50)),
+             ("saveSceneButton",        (50, 100)),
+             ("exitProgramButton",      (50, 150)),
+             ("addStraightButton",      (WINDOW_SIZE[0], 0)),
+             ("appendStraightButton",   (WINDOW_SIZE[0]-50, 0)),
+             ("addHelixArcButton",      (WINDOW_SIZE[0], 50)),
+             ("appendHelixArcButton",   (WINDOW_SIZE[0]-50, 50)),
+             ("addBezierArcButton",     (WINDOW_SIZE[0], 100)),
+             ("appendBezierArcButton",  (WINDOW_SIZE[0]-50, 100)),
+             ("changeActiveEndButton",  (WINDOW_SIZE[0], 150)),
+             ("deleteObjectsButton",    (WINDOW_SIZE[0], 200)),
+             ("undoButton",             (WINDOW_SIZE[0]//2,0)),
+             ("redoButton",             (WINDOW_SIZE[0]//2+50,0)))
+  for name, pos in buttons:
+    rect = getObjectByName(name).surfaceObj.get_rect()
+    rect.topright = pos
+    getObjectByName(name).setRectangle(rect)
+
 #_______________________________________________________________________
 
 
 def main():
-  global idleClick, objectsList, selectedObjects
+  global idleClick, objectsList, selectedObjects, WINDOW_SIZE
 
   logging.basicConfig(level=logging.DEBUG,
                       format='%(asctime)s %(levelname)s: %(message)s',
@@ -1941,7 +1969,8 @@ def main():
 
   # Initialize pygame
   pygame.init()
-  screen = pygame.display.set_mode(WINDOW_SIZE)
+  screen = pygame.display.set_mode( WINDOW_SIZE,
+                                    pygame.RESIZABLE )
 
   # Set window icon
   # Image credit: http://chidioparareports.blogspot.de/2012/06/special-report-nigerian-airlines-and.html
@@ -2102,6 +2131,10 @@ def main():
 
     # Process event queue
     for event in thisTickEvents:
+      # Resize game window
+      if event.type == pygame.VIDEORESIZE:
+        processResizeEvent(event, screen)
+        rerender = True
       # Quit game
       if event.type == pygame.QUIT:
         running = False
@@ -2127,6 +2160,15 @@ def main():
                 o.clickAction()
             if not GUIwasClicked:
               if len(selectedObjects)==1:
+                if isinstance(so, BezierArc):
+                  if so.cursorOnBezierControl(mousePos):
+                    createUndoHistory()
+                    dragStartedOnBezierControlStart = True
+                    break
+                  elif so.cursorOnBezierControl(mousePos, False):
+                    createUndoHistory()
+                    dragStartedOnBezierControlEnd = True
+                    break
                 if selectedObjects[0].cursorOnObject():
                   so = selectedObjects[0]
                   if so.cursorOnEnd(mousePos):
@@ -2140,13 +2182,6 @@ def main():
                     dragStartedOnSelectedObject = True
                     infoMessage("dragStartedOnSelectedObject")
                   break
-                elif isinstance(so, BezierArc):
-                  if so.cursorOnBezierControl(mousePos):
-                    createUndoHistory()
-                    dragStartedOnBezierControlStart = True
-                  elif so.cursorOnBezierControl(mousePos, False):
-                    createUndoHistory()
-                    dragStartedOnBezierControlEnd = True
               else:
                 for so in selectedObjects:
                   if so.cursorOnObject(mousePos):
