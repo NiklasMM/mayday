@@ -54,6 +54,7 @@ SCRIPT_PATH = os.path.dirname(__file__)
 
 WINDOW_SIZE = [800, 600]
 ORIGIN      = [WINDOW_SIZE[0]//2, WINDOW_SIZE[1]//2]
+CAMERA_POSITION = [0., 0., 0.]
 AZIMUTH_ANGULAR_SPEED         = 0.05
 ELEVATION_ANGULAR_SPEED       = 0.05
 ZOOM_IN_SPEED                 = 1.05
@@ -158,11 +159,19 @@ class Point3D(object):
     self.x, self.y, self.z = _x, _y, _z
 
   @classmethod
-  def copy(self, other):
+  def copy(cls, other):
     """Copy 'constructor'"""
     if not isinstance(other, Point3D):
       raise TypeError
     return Point3D(other.x, other.y, other.z)
+
+  @classmethod
+  def fromList(cls, other):
+    if not isinstance(other, (list, tuple)):
+      raise TypeError
+    if not len(other)==3:
+      raise TypeError
+    return Point3D(other[0], other[1], other[2])
 
   def __add__(self, other):
     """self + other"""
@@ -1245,8 +1254,9 @@ class HelixArc(PathPiece):
       screen.blit(markdot, self.activeEndPixelPos)
       screen.blit(markring, self.inactiveEndPixelPos)
     ppos = project3dToPixelPosition(self.center)
-    self.rect.center = [ppos[0]+self.centershift[0],
-                        ppos[1]+self.centershift[1]]
+    zero = project3dToPixelPosition(Point3D(0,0,0))
+    self.rect.center = [ppos[0]+self.centershift[0]-zero[0]+ORIGIN[0],
+                        ppos[1]+self.centershift[1]-zero[1]+ORIGIN[1]]
     screen.blit(self.surfaceObj, self.rect)
 
 
@@ -1462,9 +1472,9 @@ class BezierArc(PathPiece):
         c.a=max(c.a,int(255*(xfrac)*(yfrac)))
         sf.set_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
 
-    r = sf.get_rect()
-    r.center = [ORIGIN[0]+self.centershift[0], ORIGIN[1]+self.centershift[1]]
-    self.rect = r
+    #r = sf.get_rect()
+    #r.center = [ORIGIN[0]+self.centershift[0], ORIGIN[1]+self.centershift[1]]
+    self.rect = sf.get_rect()
 
   def draw(self, screen):
     """
@@ -1502,8 +1512,9 @@ class BezierArc(PathPiece):
       screen.blit(markrectangle,  self.bezierControlStartPixelPos)
       screen.blit(markrectangle,  self.bezierControlEndPixelPos)
     ppos = project3dToPixelPosition(self.center)
-    self.rect.center = [ppos[0]+self.centershift[0],
-                        ppos[1]+self.centershift[1]]
+    zero = project3dToPixelPosition(Point3D(0,0,0))
+    self.rect.center = [ppos[0]+self.centershift[0]-zero[0]+ORIGIN[0],
+                        ppos[1]+self.centershift[1]-zero[1]+ORIGIN[1]]
     screen.blit(self.surfaceObj, self.rect)
 
 
@@ -1627,6 +1638,7 @@ def compute_projection_parameters(newazimuth, newelevation, newzoom):
 def project3dToPixelPosition(c, origin=None):
   if origin is None:
     origin = ORIGIN
+  c = Point3D.copy(c) - CAMERA_POSITION
   """Computes the 2D pixel screen coordinate for a 3D point"""
   # Isometric projection
   #          [ -right- ]T    [ | ]
@@ -1642,7 +1654,7 @@ def project3dToPixelPosition(c, origin=None):
   return result
 
 
-def unprojectPixelTo3dPosition(p, origin=ORIGIN, height=0.):
+def unprojectPixelTo3dPosition(p, origin=None, height=0.):
   """Computes the 3d coordinates for a 2d pixel position, given a (z-) height"""
   # Yes, this is ugly, but the math is VERY simple: Just resolve the system
   # used in project3dToPixelPosition() to compute the pixel, and the fact
@@ -1654,6 +1666,8 @@ def unprojectPixelTo3dPosition(p, origin=ORIGIN, height=0.):
   # There are three variables (x,y,z), but only two equations. That is why the
   # function parameter HEIGHT is necessary to get an overdetermined system.
   # (The ORIGIN is assumed to be constant.)
+  if origin is None:
+    origin = ORIGIN
   y = ((p[1]-origin[1])/(zoom*front[1]) -                                \
         height*up[1]/front[1] -                                          \
        (right[1]/(right[0]*front[1]))*                                   \
@@ -1661,7 +1675,7 @@ def unprojectPixelTo3dPosition(p, origin=ORIGIN, height=0.):
       (1. - (front[0]*right[1])/(right[0]*front[1]))
   x = ((p[0]-origin[0])/zoom - height*up[0] - y*front[0]) / right[0]
   z = height
-  point3d = Point3D(x, y, z)
+  point3d = Point3D(x, y, z) + CAMERA_POSITION
   return point3d
 
 
@@ -1709,7 +1723,7 @@ def drawHelpLines(pos3D, screen, color=(0,0,0)):
   del pixels
   # Draw
   tempSurfaceObjRect = tempSurfaceObj.get_rect()
-  tempSurfaceObjRect.center = ORIGIN
+  tempSurfaceObjRect.center = project3dToPixelPosition(Point3D(0,0,0))
   screen.blit(tempSurfaceObj, tempSurfaceObjRect)
 
 
@@ -1961,7 +1975,9 @@ def processResizeEvent(event, screen):
 
 
 def main():
-  global idleClick, objectsList, selectedObjects, WINDOW_SIZE
+  global idleClick, objectsList, selectedObjects, WINDOW_SIZE, CAMERA_POSITION
+
+  CAMERA_POSITION = Point3D.fromList(CAMERA_POSITION)
 
   logging.basicConfig(level=logging.DEBUG,
                       format='%(asctime)s %(levelname)s: %(message)s',
@@ -2056,11 +2072,11 @@ def main():
                                startAngle=-360., endAngle=360.,
                                radius=100., center=Point3D(0,100,0),
                                rightHanded=False, color=(0,0,255),
-                               gamma=1.))
+                               gamma=1.))"""
   objectsList.append(BezierArc(startPoint3D=Point3D(100,0,-50),
                                endPoint3D=Point3D(-100,0,50),
                                bezierControlStartPoint3D=Point3D(0,50,0),
-                               bezierControlEndPoint3D=Point3D(0,-50,0)))"""
+                               bezierControlEndPoint3D=Point3D(0,-50,0)))
 
   # Prerender font object
   toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.',
@@ -2219,22 +2235,22 @@ def main():
            not dragStartedOnBezierControlEnd    and \
            not dragStartedOnInactiveEnd:
           deselectObjects()
-        # Only "click"-select objects (box selection is done later)
-        if not boxSelectionInProgress           and \
-           not dragStartedOnActiveEnd           and \
-           not dragStartedOnBezierControlStart  and \
-           not dragStartedOnBezierControlEnd    and \
-           not dragStartedOnInactiveEnd:
-          for o in objectsList:
-            if o.cursorOnObject(mousePos) and not isinstance(o, Button):
-              selectObjects(o)
-              infoMessage("Object selected (via Click).")
-              # Click-selection can only select one object at a time
-              # TODO ordering/preference?
-              break
-          for o in objectsList:
-            if isinstance(o, Button):
-              o.deactivate()
+          # Only "click"-select objects (box selection is done later)
+          if not boxSelectionInProgress           and \
+             not dragStartedOnActiveEnd           and \
+             not dragStartedOnBezierControlStart  and \
+             not dragStartedOnBezierControlEnd    and \
+             not dragStartedOnInactiveEnd:
+            for o in objectsList:
+              if o.cursorOnObject(mousePos) and not isinstance(o, Button):
+                selectObjects(o)
+                infoMessage("Object selected (via Click).")
+                # Click-selection can only select one object at a time
+                # TODO ordering/preference?
+                break
+            for o in objectsList:
+              if isinstance(o, Button):
+                o.deactivate()
         # Clicking into nothing is common for "cancel everything"
         if idleClick and lmbLastTick:
           infoMessage("Idle lMB click, deselecting all...")
@@ -2271,6 +2287,7 @@ def main():
       rerender = True
     if pressedKeys[pygame.K_HOME]:
       compute_projection_parameters(315*(pi/180.), -66*(pi/180.), 1.0)
+      CAMERA_POSITION = Point3D()
       rerender = True
     if pressedKeys[pygame.K_MINUS]:
       compute_projection_parameters(azimuth, elevation, zoom*ZOOM_OUT_SPEED)
@@ -2293,7 +2310,17 @@ def main():
                                                   MOUSE_ELEVATION_ANGULAR_SPEED,
                                         zoom)
           rerender = True
-      # Zoom factor
+      # Move camera position
+      if rmbDown:
+        cam = Point3D.copy(CAMERA_POSITION)
+        ppos = project3dToPixelPosition(cam)
+        ppos[0] -= mouseRelativeMotionThisTick[0]
+        ppos[1] -= mouseRelativeMotionThisTick[1]
+        print unprojectPixelTo3dPosition(ppos)
+        CAMERA_POSITION += unprojectPixelTo3dPosition(ppos)-CAMERA_POSITION
+        rerender = True
+
+      """# Zoom factor
       if rmbDown:
         if mouseRelativeMotionThisTick[1] < 0:
           compute_projection_parameters(azimuth,
@@ -2308,7 +2335,7 @@ def main():
                                         zoom*ZOOM_OUT_SPEED**
                                           (mouseRelativeMotionThisTick[1]*
                                            MOUSE_ZOOM_OUT_SPEED))
-          rerender = True
+          rerender = True"""
 
     ## Keyboard shortcuts
     if pressedKeysLastTick != pressedKeys:
@@ -2413,7 +2440,7 @@ def main():
               so.changeAngles(mouseRelativeMotionThisTick,
                               dragStartedOnActiveEnd)
         ## BezierArcs
-        if isinstance(so, BezierArc):
+        elif isinstance(so, BezierArc):
           if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
             # Change a BezierArc's HEIGHT using the SHIFT key
             if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
