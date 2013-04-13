@@ -115,7 +115,7 @@ redoHistory = deque()
 # Tells if a click was "doing nothing" (click into empty space)
 idleClick = True
 
-
+# Tooltips for all GUI buttons
 TOOLTIP_TEXTS = {
                  "dummy":
                   "<<<TOOLTIP_TEXTS[CLASS_NAME_AS_STRING]>>>",
@@ -134,11 +134,11 @@ TOOLTIP_TEXTS = {
                  "ChangeActiveEndButton":
                   "Switch between the active ends of a path piece",
                  "DeleteObjectsButton":
-                  "Permanently delete all selected objects",
+                  "Permanently delete all selected objects (Del)",
                  "LoadSceneButton":
-                  "Load an existing scene from disk (unsaved changes will be lost!)",
+                  "Load an existing scene from disk (unsaved changes will be lost!) [Ctrl-O]",
                  "SaveSceneButton":
-                  "Save the current scene to disk",
+                  "Save the current scene to disk [Ctrl-S]",
                  "NewSceneButton":
                   "Create a new, blank scene (unsaved changes will be lost!)",
                  "ExitProgramButton":
@@ -146,9 +146,24 @@ TOOLTIP_TEXTS = {
                  "UndoButton":
                   "Undo the last operation",
                  "RedoButton":
-                  "Repeat the last undone operation"
+                  "Repeat the last undone operation",
+                 "FlattenPathPieceButton":
+                  "Align a path piece into a plane"
                 }
 TOOLTIP_SURFACEOBJECTS = {}
+
+# Enable or disable detailed visual helps on PathPieces
+ROLLERCOASTER_HEIGHTS = False
+
+# Some colors
+SELECTED_OBJECT_COLOR = (255, 0, 0)
+RED                   = (255, 0, 0)
+GREEN                 = (0, 255, 0)
+BLUE                  = (0, 0, 255)
+LIGHT_BLUE            = (160, 160, 255)
+GREY1                 = (127, 127, 127)
+GREY2                 = (170, 170, 170)
+ROLLERCOASTER_COLOR   = (160, 160, 255)
 
 #_______________________________________________________________________
 
@@ -172,6 +187,10 @@ class Point3D(object):
     if not len(other)==3:
       raise TypeError
     return Point3D(other[0], other[1], other[2])
+
+  def xy(self):
+    """Return the coordinates on the (z=0)-plane"""
+    return Point3D(self.x, self.y, 0)
 
   def __add__(self, other):
     """self + other"""
@@ -581,13 +600,45 @@ class ChangeActiveEndButton(Button):
       return None
     so = selectedObjects[0]
     so.activeEnd = 1 - so.activeEnd
-    if isinstance(so, HelixArc):
-      so.render(True)
-    else:
-      so.render()
+    so.render(True)
 
   def tooltip(self, screen, mousePos=None):
     super(ChangeActiveEndButton, self).tooltip(screen, mousePos, "ChangeActiveEndButton")
+
+
+class FlattenPathPieceButton(Button):
+  def __init__(self, name="FlattenPathPieceButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/flattenpathpiece.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/flattenpathpieceClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/flattenpathpieceHighlighted.png'.format(SCRIPT_PATH))
+    super(FlattenPathPieceButton, self).__init__(name,
+                                                buttonRect,
+                                                img,
+                                                clickedImg,
+                                                highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(FlattenPathPieceButton, self).clickAction()
+    except:
+      return None
+    so = selectedObjects[0]
+    if isinstance(so, (BezierArc, Straight)):
+			so.startPoint.z = 0
+			so.endPoint.z = 0
+    else:
+			so.startHeight = 0
+			so.endHeight = 0
+    so.center.z = 0
+    so.recompute()
+    so.render(True)
+
+  def tooltip(self, screen, mousePos=None):
+    super(FlattenPathPieceButton, self).tooltip(screen, mousePos, "FlattenPathPieceButton")
 
 
 class DeleteObjectsButton(Button):
@@ -875,6 +926,13 @@ class PathPiece(ClickRegisteringObject):
     self.inactiveEndPixelPos = (0,0)
     super(PathPiece, self).__init__()
 
+  def select(self):
+    super(PathPiece, self).select()
+    self.render(True)
+  def deselect(self):
+    super(PathPiece, self).deselect()
+    self.render(True)
+
   def shelve(self):
     pass
 
@@ -894,23 +952,222 @@ class PathPiece(ClickRegisteringObject):
   #    self.center = [i for i in self.center]
 
 
-
 class Straight(PathPiece):
+  # Number of frames to wait until rendering in high resolution
+  _HQFrameDelay = 3
+
+  def __init__(self,
+               startPoint3D=Point3D(50,0,0),
+               endPoint3D=Point3D(-50,0,0),
+               color=(0,0,0)):
+    """Bezier Points are OFFSETS to the respective point!"""
+    super(Straight, self).__init__()
+    self.centershift = [0,0]
+    self.color = color
+    self.startPoint = Point3D.copy(startPoint3D)
+    self.endPoint = Point3D.copy(endPoint3D)
+    self.activeEndPixelPos = [0,0]
+    self.inactiveEndPixelPos = [0,0]
+    self.activeEnd = 0
+    self.center = (self.startPoint+self.endPoint)/2
+    self.points3d = []
+    self.points3dHD = []
+    self.recompute()
+    self.render()
+
+  def shelve(self):
+    """Save a Straight instance to file"""
+    d = [self.center,
+         self.color[:],
+         self.startPoint,
+         self.endPoint,
+         self.activeEnd]
+    return d
+
+  def unshelve(self, shelvedData):
+    """Load a Straight instance from file"""
+    self.center,                  \
+    self.color,                   \
+    self.startPoint,              \
+    self.endPoint,                \
+    self.activeEnd = shelvedData
+    self.recompute()
+
+  def recompute(self):
+    self.points3d = []
+    self.points3dHD = []
+    step = 0
+    steps = 500
+    # Avoid nasty divide-by-zero errors
+    steps = max(100, steps)
+    # Limit the number of samples to avoid lag
+    steps = min(2500, steps)
+    # Bezier curve computation
+    self.points3d = []
+    self.points3dHD = []
+    increment_vector = (self.endPoint-self.startPoint)/steps
+    for step in range(steps+1):
+      B = self.startPoint + step*increment_vector
+      # Enable drawing in low and high resolution
+      self.points3dHD.append(B)
+      # Ensure that the first and last point are in the low res samples
+      if step % 10 == 0 or step == steps:
+        self.points3d.append(B)
+
+  def getEndPoint3d(self, getActiveEnd):
+    return self.points3d[0] if (self.activeEnd==0 and getActiveEnd) or  \
+                               (self.activeEnd==1 and not getActiveEnd) \
+                            else self.points3d[-1]
+
+  def setEndPos3d(self, newPos, setActiveEnd):
+    endIndexInPoints3d = 0 if (self.activeEnd==0 and setActiveEnd) or  \
+                              (self.activeEnd==1 and not setActiveEnd) \
+                           else -1
+    delta = newPos - self.points3d[endIndexInPoints3d]
+    if (self.activeEnd==0 and setActiveEnd) or  \
+       (self.activeEnd==1 and not setActiveEnd):
+      self.startPoint += .5 * delta
+      self.endPoint   -= .5  * delta
+      self.center     += .5  * delta
+    else:
+      self.startPoint -= .5  * delta
+      self.endPoint   += .5 * delta
+      self.center     += .5  * delta
+    self.recompute()
+    self.render(True)
+
+  def moveTo(self, newPos):
+    super(Straight, self).moveTo(newPos)
+    self.render(True)
+
+  def render(self, highdefinition=False):
+    """
+    If highdefinition is FALSE, the HelixArc will be rendered using 100 sample
+    points. If highdefinition is TRUE, 1000 points will be used instead.
+    """
+    minx, miny, maxx, maxy = 9999.,9999.,-9999.,-9999.
+    points = self.points3dHD if highdefinition else self.points3d
+    pixels = []
+    for p in points:
+      px, py = project3dToPixelPosition(p, (0,0))
+      pixels.append(((px,py), p.z+self.center.z))
+      minx=min(minx,px)
+      miny=min(miny,py)
+      maxx=max(maxx,px)
+      maxy=max(maxy,py)
+    # The Bezier control points should not be drawn as points, so take them out
+    pixels[-2:] = []
+    # Padding the image avoids clipping pixels
+    pad = CLICK_TOLERANCE_RADIUS+2
+    self.centershift = [(maxx+minx)/2,(maxy+miny)/2]
+    sf = pygame.Surface((maxx-minx+2*pad,maxy-miny+2*pad))
+    sf = sf.convert_alpha()
+    sf.fill((0,0,0,0))
+    sfsize=sf.get_size()
+    self.surfaceObj = sf
+
+    pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
+    ppos = project3dToPixelPosition(pos + self.center)
+    self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                              int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+    pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
+    ppos = project3dToPixelPosition(pos + self.center)
+    self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+
+    # Draw sample points, using Wu-style antialiasing
+    drawcolor = SELECTED_OBJECT_COLOR if self.selected else self.color
+    # NOTE that AA is performed using only the alpha channel!
+    for i, (p, z) in enumerate(pixels):
+      # Visualize parts that are "below" the (z=0)-plane differently
+      if z < 0 and i%10!=0: continue
+      xint, xfrac = divmod(p[0], 1)
+      yint, yfrac = divmod(p[1], 1)
+
+      if 0 <= int(xint)-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)-int(minx)+pad,int(yint)-int(miny)+pad))
+        c.r, c.g, c.b = drawcolor
+        c.a=max(c.a,int(255*(1.-xfrac)*(1.-yfrac)))
+        sf.set_at((int(xint)-int(minx)+pad,int(yint)-int(miny)+pad),c)
+
+      if 0 <= int(xint)+1-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)+1-int(minx)+pad,int(yint)-int(miny)+pad))
+        c.r, c.g, c.b = drawcolor
+        c.a=max(c.a,int(255*(xfrac)*(1.-yfrac)))
+        sf.set_at((int(xint)+1-int(minx)+pad,int(yint)-int(miny)+pad),c)
+
+      if 0 <= int(xint)-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)+1-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)-int(minx)+pad,int(yint)+1-int(miny)+pad))
+        c.r, c.g, c.b = drawcolor
+        c.a=max(c.a,int(255*(1.-xfrac)*(yfrac)))
+        sf.set_at((int(xint)-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
+
+      if 0 <= int(xint)+1-int(minx)+pad < WINDOW_SIZE[0] and \
+         0 <= int(yint)+1-int(miny)+pad < WINDOW_SIZE[1]:
+        c = sf.get_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad))
+        c.r, c.g, c.b = drawcolor
+        c.a=max(c.a,int(255*(xfrac)*(yfrac)))
+        sf.set_at((int(xint)+1-int(minx)+pad,int(yint)+1-int(miny)+pad),c)
+
+    #r = sf.get_rect()
+    #r.center = [ORIGIN[0]+self.centershift[0], ORIGIN[1]+self.centershift[1]]
+    self.rect = sf.get_rect()
+
+  def draw(self, screen):
+    """
+    The Straight needs special treatment, as its boundingbox depends heavily
+    on the viewing direction.
+    """
+    if self.selected and len(selectedObjects)==1:
+      """pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
+      ppos = project3dToPixelPosition(pos + self.center)
+      self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+      pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
+      ppos = project3dToPixelPosition(pos + self.center)
+      self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                  int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+      pos  = self.startPoint+self.bezierControlStartPoint
+      ppos = project3dToPixelPosition(pos + self.center)
+      self.bezierControlStartPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                         int(ppos[1])-CLICK_TOLERANCE_RADIUS)
+      pos  = self.endPoint+self.bezierControlEndPoint
+      ppos = project3dToPixelPosition(pos + self.center)
+      self.bezierControlEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
+                                       int(ppos[1])-CLICK_TOLERANCE_RADIUS)"""
+
+      if ROLLERCOASTER_HEIGHTS:
+        for p in self.points3d[::5]:
+          drawHelpLines(p+self.center, screen, ROLLERCOASTER_COLOR)
+
+      screen.blit(markring,       self.activeEndPixelPos)
+      screen.blit(markdot,        self.activeEndPixelPos)
+      screen.blit(markring,       self.inactiveEndPixelPos)
+    ppos = project3dToPixelPosition(self.center)
+    zero = project3dToPixelPosition(Point3D(0,0,0))
+    self.rect.center = [ppos[0]+self.centershift[0]-zero[0]+ORIGIN[0],
+                        ppos[1]+self.centershift[1]-zero[1]+ORIGIN[1]]
+    screen.blit(self.surfaceObj, self.rect)
+
+
+class Straight2(PathPiece):
   def __init__(self,
                startPoint3D=Point3D(),
                endPoint3D=Point3D(),
-               color=(0,0,255)):
-    super(Straight, self).__init__()
+               color=None):
+    super(Straight2, self).__init__()
     self.startPoint = Point3D.copy(startPoint3D)
     self.endPoint = Point3D.copy(endPoint3D)
-    self.color = color
-    #[(a+b)/2. for a,b in zip(startPoint3D, endPoint3D)]
+    self.color = color if color is not None else (0,0,0)
     self.center = (startPoint3D+endPoint3D)/2
     self.activeEnd = 0
     self.render()
 
   def shelve(self):
-    """Save a Straight instance to file"""
+    """Save a Straight2 instance to file"""
     d = [self.startPoint,
          self.endPoint,
          self.color[:],
@@ -919,7 +1176,7 @@ class Straight(PathPiece):
     return d
 
   def unshelve(self, shelvedData):
-    """Load a Straight instance from file"""
+    """Load a Straight2 instance from file"""
     self.startPoint,    \
     self.endPoint,      \
     self.color,         \
@@ -927,14 +1184,10 @@ class Straight(PathPiece):
     self.activeEnd = shelvedData
 
   def moveTo(self, newPos):
-    #[(i-j) for i,j in zip(self.startPoint, self.center)]
     startOffset = self.startPoint - self.center
-    #[(i-j) for i,j in zip(self.endPoint, self.center)]
     endOffset = self.endPoint - self.center
-    super(Straight, self).moveTo(newPos)
-    #tuple([(i+j) for i,j in zip(startOffset, self.center)])
+    super(Straight2, self).moveTo(newPos)
     self.startPoint = startOffset + self.center
-    #tuple([(i+j) for i,j in zip(endOffset, self.center)])
     self.endPoint = endOffset + self.center
     self.render()
 
@@ -946,7 +1199,7 @@ class Straight(PathPiece):
 
     positions = (project3dToPixelPosition(self.startPoint, ORIGIN),
                  project3dToPixelPosition(self.endPoint, ORIGIN))
-    colors = (self.color)
+    drawcolor = SELECTED_OBJECT_COLOR if self.selected else self.color
     min_x = int(min([p[0] for p in positions]))
     max_x = int(max([p[0] for p in positions]))
     min_y = int(min([p[1] for p in positions]))
@@ -962,11 +1215,12 @@ class Straight(PathPiece):
 
     linecenter = project3dToPixelPosition((self.endPoint+self.startPoint)/2,
                                           ORIGIN)
-    pygame.draw.aaline(tempSurfaceObj, self.color,
+    pygame.draw.aaline(tempSurfaceObj, drawcolor,
                        (positions[0][0]-linecenter[0]+tempSurfaceObjCenter[0],
                         positions[0][1]-linecenter[1]+tempSurfaceObjCenter[1]),
                        (positions[1][0]-linecenter[0]+tempSurfaceObjCenter[0],
-                        positions[1][1]-linecenter[1]+tempSurfaceObjCenter[1]))
+                        positions[1][1]-linecenter[1]+tempSurfaceObjCenter[1]),
+                       0)
 
     # Repair the alpha values (transparency) at antialiasing border
     pixels = pygame.PixelArray(tempSurfaceObj)
@@ -1004,11 +1258,11 @@ class Straight(PathPiece):
 
   def draw(self, screen):
     # Mark the active end
-    if self.selected:
+    if self.selected and len(selectedObjects)==1:
       screen.blit(markring, self.activeEndPixelPos)
       screen.blit(markdot, self.activeEndPixelPos)
       screen.blit(markring, self.inactiveEndPixelPos)
-    super(Straight, self).draw(screen)
+    super(Straight2, self).draw(screen)
 
 
 class HelixArc(PathPiece):
@@ -1019,7 +1273,7 @@ class HelixArc(PathPiece):
                startHeight=-40., endHeight=40.,
                startAngle=0., endAngle=360.,
                radius=50., center=Point3D(),
-               rightHanded=True, color=(0,0,255),
+               rightHanded=True, color=(0,0,0),
                gamma=1.):
     super(HelixArc, self).__init__()
     self.center = Point3D.copy(center)
@@ -1035,7 +1289,8 @@ class HelixArc(PathPiece):
     #  It's called "gamma" because it follows a gamma correction-style curve
     self.gamma = gamma
     self.activeEnd = 0
-    self.bezierControls = []
+    self.points3d = []
+    self.points3dHD = []
     self.recompute()
     self.render()
 
@@ -1196,11 +1451,11 @@ class HelixArc(PathPiece):
                                 int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
     # Draw sample points, using Wu-style antialiasing
+    drawcolor = SELECTED_OBJECT_COLOR if self.selected else self.color
     # NOTE that AA is performed using only the alpha channel!
-    for p, z in pixels:
-      # Color pixels that are "below" the (z=0)-plane differently
-      drawcolor = self.color if z >= 0 \
-                             else (127,127,255)
+    for i, (p, z) in enumerate(pixels):
+      # Visualize parts that are "below" the (z=0)-plane differently
+      if z < 0 and i%10!=0: continue
       xint, xfrac = divmod(p[0], 1)
       yint, yfrac = divmod(p[1], 1)
 
@@ -1241,7 +1496,7 @@ class HelixArc(PathPiece):
     The HelixArc needs special treatment, as its boundingbox depends heavily
     on the viewing direction.
     """
-    if self.selected:
+    if self.selected and len(selectedObjects)==1:
       pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
       ppos = project3dToPixelPosition(pos + self.center)
       self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
@@ -1269,7 +1524,7 @@ class BezierArc(PathPiece):
                endPoint3D=Point3D(-50,0,0),
                bezierControlStartPoint3D=Point3D(0,50,0),
                bezierControlEndPoint3D=Point3D(0,-50,0),
-               color=(0,0,255)):
+               color=(0,0,0)):
     """Bezier Points are OFFSETS to the respective point!"""
     super(BezierArc, self).__init__()
     self.centershift = [0,0]
@@ -1284,6 +1539,8 @@ class BezierArc(PathPiece):
     self.bezierControlStartPoint = Point3D.copy(bezierControlStartPoint3D)
     self.bezierControlEndPoint = Point3D.copy(bezierControlEndPoint3D)
     self.center = (self.startPoint+self.endPoint)/2
+    self.points3d = []
+    self.points3dHD = []
     self.recompute()
     self.render()
 
@@ -1410,7 +1667,7 @@ class BezierArc(PathPiece):
     # The Bezier control points should not be drawn as points, so take them out
     pixels[-2:] = []
     # Padding the image avoids clipping pixels
-    pad = CLICK_TOLERANCE_RADIUS
+    pad = CLICK_TOLERANCE_RADIUS+2
     self.centershift = [(maxx+minx)/2,(maxy+miny)/2]
     sf = pygame.Surface((maxx-minx+2*pad,maxy-miny+2*pad))
     sf = sf.convert_alpha()
@@ -1436,11 +1693,11 @@ class BezierArc(PathPiece):
                                      int(ppos[1])-CLICK_TOLERANCE_RADIUS)
 
     # Draw sample points, using Wu-style antialiasing
+    drawcolor = SELECTED_OBJECT_COLOR if self.selected else self.color
     # NOTE that AA is performed using only the alpha channel!
-    for p, z in pixels:
-      # Color pixels that are "below" the (z=0)-plane differently
-      drawcolor = self.color if z >= 0 \
-                             else (127,127,255)
+    for i, (p, z) in enumerate(pixels):
+      # Visualize parts that are "below" the (z=0)-plane differently
+      if z < 0 and i%10!=0: continue
       xint, xfrac = divmod(p[0], 1)
       yint, yfrac = divmod(p[1], 1)
 
@@ -1481,7 +1738,7 @@ class BezierArc(PathPiece):
     The BezierArc needs special treatment, as its boundingbox depends heavily
     on the viewing direction.
     """
-    if self.selected:
+    if self.selected and len(selectedObjects)==1:
       """pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
       ppos = project3dToPixelPosition(pos + self.center)
       self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
@@ -1499,12 +1756,16 @@ class BezierArc(PathPiece):
       self.bezierControlEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
                                        int(ppos[1])-CLICK_TOLERANCE_RADIUS)"""
 
+      if ROLLERCOASTER_HEIGHTS:
+        for p in self.points3d[::5]:
+          drawHelpLines(p+self.center, screen, ROLLERCOASTER_COLOR)
+
       drawPotentialConnectionLine(self.startPoint+self.center,
                                   self.startPoint+self.center+self.bezierControlStartPoint,
-                                  screen)
+                                  screen, LIGHT_BLUE)
       drawPotentialConnectionLine(self.endPoint+self.center,
                                   self.endPoint+self.center+self.bezierControlEndPoint,
-                                  screen)
+                                  screen, LIGHT_BLUE)
 
       screen.blit(markring,       self.activeEndPixelPos)
       screen.blit(markdot,        self.activeEndPixelPos)
@@ -1516,6 +1777,17 @@ class BezierArc(PathPiece):
     self.rect.center = [ppos[0]+self.centershift[0]-zero[0]+ORIGIN[0],
                         ppos[1]+self.centershift[1]-zero[1]+ORIGIN[1]]
     screen.blit(self.surfaceObj, self.rect)
+
+
+class Path(object):
+  """@class Path
+  A Path describes a 3-dimensional spacial structure consisting of (possibly
+  intertwined) curves made up of linked-together PathPieces. Objects may move
+  along a Path, switching off to another Path at a point where the two Paths
+  are linked.
+  """
+  def __init__(self):
+    pass
 
 
 #_______________________________________________________________________
@@ -1679,13 +1951,15 @@ def unprojectPixelTo3dPosition(p, origin=None, height=0.):
   return point3d
 
 
-def drawPotentialConnectionLine(p1, p2, screen):
+def drawPotentialConnectionLine(p1, p2, screen, color=None):
   # Yes, this is really not how that was intended to be used.
-  s = Straight(p1, p2, (255,100,100))
+  if color is None:
+    color = (255,100,100)
+  s = Straight2(p1, p2, color)
   s.draw(screen)
 
 
-def drawHelpLines(pos3D, screen, color=(0,0,0)):
+def drawHelpLines2(pos3D, screen, color=(0,0,0)):
   """Draw 3D orientation help lines"""
   positions = [project3dToPixelPosition(Point3D(0, 0, 0)),
                project3dToPixelPosition(Point3D(pos3D.x, 0, 0)),
@@ -1725,6 +1999,10 @@ def drawHelpLines(pos3D, screen, color=(0,0,0)):
   tempSurfaceObjRect = tempSurfaceObj.get_rect()
   tempSurfaceObjRect.center = project3dToPixelPosition(Point3D(0,0,0))
   screen.blit(tempSurfaceObj, tempSurfaceObjRect)
+
+
+def drawHelpLines(pos3D, screen, color=(0,0,0)):
+  Straight2(pos3D, pos3D.xy(), color).draw(screen)
 
 
 def render_background():
@@ -1768,8 +2046,10 @@ def makeGUIButtons():
                 (WINDOW_SIZE[0]-50, 100)),
              (ChangeActiveEndButton, "changeActiveEndButton",
                 (WINDOW_SIZE[0], 150)),
-             (DeleteObjectsButton, "deleteObjectsButton",
+             (FlattenPathPieceButton, "flattenPathPieceButton",
                 (WINDOW_SIZE[0], 200)),
+             (DeleteObjectsButton, "deleteObjectsButton",
+                (WINDOW_SIZE[0], 300)),
              (UndoButton, "undoButton",
                 (WINDOW_SIZE[0]//2,0)),
              (RedoButton, "redoButton",
@@ -1855,6 +2135,7 @@ def deleteObject(obj):
 
 
 def drawHelpDebugInfoMessages(screen, rerender=False,
+                              windowSizeHasChanged=False,
                               msgs1=[], msgs2=[], msgq=[]):
   """
   Draw helpful texts and print the info message queue.
@@ -1863,6 +2144,10 @@ def drawHelpDebugInfoMessages(screen, rerender=False,
            DO NOT set them manually or use them in a function call!
   """
   global messageQueueChange
+
+  # (Brute-force method)
+  if windowSizeHasChanged:
+    msgs1, msgs2 = [], []
 
   for so in selectedObjects:
     pos = so.center
@@ -1963,7 +2248,8 @@ def processResizeEvent(event, screen):
              ("addBezierArcButton",     (WINDOW_SIZE[0], 100)),
              ("appendBezierArcButton",  (WINDOW_SIZE[0]-50, 100)),
              ("changeActiveEndButton",  (WINDOW_SIZE[0], 150)),
-             ("deleteObjectsButton",    (WINDOW_SIZE[0], 200)),
+             ("flattenPathPieceButton", (WINDOW_SIZE[0], 200)),
+             ("deleteObjectsButton",    (WINDOW_SIZE[0], 300)),
              ("undoButton",             (WINDOW_SIZE[0]//2,0)),
              ("redoButton",             (WINDOW_SIZE[0]//2+50,0)))
   for name, pos in buttons:
@@ -2143,7 +2429,9 @@ def main():
       idleClick = False
 
     # Objects may need to be rerendered if camera parameters change
-    rerender = False
+    rerender              = \
+    windowSizeHasChanged  = \
+    render_HD_override    = False
 
     # Process event queue
     for event in thisTickEvents:
@@ -2151,6 +2439,7 @@ def main():
       if event.type == pygame.VIDEORESIZE:
         processResizeEvent(event, screen)
         rerender = True
+        windowSizeHasChanged = True
       # Quit game
       if event.type == pygame.QUIT:
         running = False
@@ -2213,8 +2502,8 @@ def main():
         elif event.button == 5:
           compute_projection_parameters(azimuth, elevation, zoom*ZOOM_OUT_SPEED**2)
           rerender = True
-        else:
-          raise Exception('Unknown mouse button %d!' % event.button)
+        #else:
+          #raise Exception('Unknown mouse button %d!' % event.button)
       # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
         # If the click was idle, forget the preemptively created history point
@@ -2248,9 +2537,9 @@ def main():
                 # Click-selection can only select one object at a time
                 # TODO ordering/preference?
                 break
-            for o in objectsList:
-              if isinstance(o, Button):
-                o.deactivate()
+        for o in objectsList:
+          if isinstance(o, Button):
+            o.deactivate()
         # Clicking into nothing is common for "cancel everything"
         if idleClick and lmbLastTick:
           infoMessage("Idle lMB click, deselecting all...")
@@ -2289,6 +2578,7 @@ def main():
       compute_projection_parameters(315*(pi/180.), -66*(pi/180.), 1.0)
       CAMERA_POSITION = Point3D()
       rerender = True
+      render_HD_override = True
     if pressedKeys[pygame.K_MINUS]:
       compute_projection_parameters(azimuth, elevation, zoom*ZOOM_OUT_SPEED)
       rerender = True
@@ -2316,7 +2606,6 @@ def main():
         ppos = project3dToPixelPosition(cam)
         ppos[0] -= mouseRelativeMotionThisTick[0]
         ppos[1] -= mouseRelativeMotionThisTick[1]
-        print unprojectPixelTo3dPosition(ppos)
         CAMERA_POSITION += unprojectPixelTo3dPosition(ppos)-CAMERA_POSITION
         rerender = True
 
@@ -2502,7 +2791,7 @@ def main():
       framesWithoutRerendering = 0
       BGSurfaceObj = render_background()
       for o in objectsList:
-        o.render()
+        o.render(render_HD_override)
     else:
       framesWithoutRerendering += 1
 
@@ -2510,7 +2799,7 @@ def main():
     if framesWithoutRerendering == HelixArc._HQFrameDelay:
       infoMessage("Rendering in HD...")
       for o in objectsList:
-        if isinstance(o, HelixArc) or isinstance(o, BezierArc):
+        if isinstance(o, PathPiece):
           o.render(True)
 
     # Save keyboard state for next tick
@@ -2520,37 +2809,31 @@ def main():
     screen.blit(BGSurfaceObj, (0, 0))
 
     # Draw help lines to ease positioning selected objects in 3D space
-    for so in selectedObjects:
+    if len(selectedObjects)==1:
+    #for so in selectedObjects:
+      so = selectedObjects[0]
       #drawHelpLines(so.center, screen)
-      if isinstance(so, Straight):
-        drawHelpLines(so.getEndPoint3d(True),
-                      screen,
-                      (127,127,127))
-        drawHelpLines(so.getEndPoint3d(False),
-                      screen,
-                      (127,127,127))
-      elif isinstance(so, HelixArc) or \
-           isinstance(so, BezierArc):
+      if not isinstance(so, Button):
         drawHelpLines(so.getEndPoint3d(True) + so.center,
                       screen,
-                      (127,127,127))
+                      GREY1)
         drawHelpLines(so.getEndPoint3d(False) + so.center,
                       screen,
-                      (127,127,127))
+                      GREY1)
       if isinstance(so, BezierArc):
         drawHelpLines(so.getBezierControl(True)+so.getEndPoint3d(True)+so.center,
                       screen,
-                      (200,200,200))
+                      GREY2)
         drawHelpLines(so.getBezierControl(False)+so.getEndPoint3d(False)+so.center,
                       screen,
-                      (200,200,200))
+                      GREY2)
 
     # Print helpful information and debugging messages (CPU intensive!)
     textRect = toggleDebugTextObj.get_rect()
     textRect.topleft = (60,0)
     screen.blit(toggleDebugTextObj, textRect)
     if printDebug:
-      drawHelpDebugInfoMessages(screen, rerender)
+      drawHelpDebugInfoMessages(screen, rerender, windowSizeHasChanged)
 
     # Draw objects
     for o in objectsList:
@@ -2591,11 +2874,13 @@ def main():
       getObjectByName('appendHelixArcButton').disable()
       getObjectByName('appendBezierArcButton').disable()
       getObjectByName('changeActiveEndButton').disable()
+      getObjectByName('flattenPathPieceButton').disable()
     else:
       getObjectByName('appendStraightButton').enable()
       getObjectByName('appendHelixArcButton').enable()
       getObjectByName('appendBezierArcButton').enable()
       getObjectByName('changeActiveEndButton').enable()
+      getObjectByName('flattenPathPieceButton').enable()
 
     if not selectedObjects:
       getObjectByName('deleteObjectsButton').disable()
