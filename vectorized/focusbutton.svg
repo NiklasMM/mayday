@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="210mm"
+   height="297mm"
+   id="svg2"
+   version="1.1"
+   inkscape:version="0.48.3.1 r9886"
+   sodipodi:docname="focusbutton.svg">
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="3.959798"
+     inkscape:cx="413.39741"
+     inkscape:cy="534.02105"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1007"
+     inkscape:window-x="0"
+     inkscape:window-y="24"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Ebene 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:#e8e8fa;fill-opacity:1;stroke:#ff7fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       id="rect2985"
+       width="62.857143"
+       height="62.857143"
+       x="340.61868"
+       y="494.75253"
+       ry="0"
+       inkscape:export-filename="/opt/mayday/img/focus.png"
+       inkscape:export-xdpi="70.450096"
+       inkscape:export-ydpi="70.450096" />
+    <path
+       style="fill:none;stroke:#bebebe;stroke-width:4.38025236;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       d="m 355.00018,549.76023 c -5.95951,-32.37703 43.72723,-12.11765 33.09512,-47.15827"
+       id="path3022-8"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/opt/mayday/img/focusClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70" />
+    <g
+       id="g3041"
+       inkscape:export-filename="/opt/mayday/img/focusHighlighted.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70">
+      <rect
+         inkscape:export-ydpi="70.450096"
+         inkscape:export-xdpi="70.450096"
+         inkscape:export-filename="/home/nikolaus/Arbeitsfläche/straight.png"
+         ry="0"
+         y="494.75253"
+         x="418.34186"
+         height="62.857143"
+         width="62.857143"
+         id="rect2985-5"
+         style="fill:#b4b3ee;fill-opacity:1;stroke:#ff7fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+      <rect
+         inkscape:export-ydpi="70.450096"
+         inkscape:export-xdpi="70.450096"
+         inkscape:export-filename="/home/nikolaus/Arbeitsfläche/straight.png"
+         ry="0"
+         y="494.75253"
+         x="418.34186"
+         height="62.857143"
+         width="62.857143"
+         id="rect2985-0-5"
+         style="fill:none;stroke:#f3c1fc;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+    </g>
+    <rect
+       style="fill:#9a9aa6;fill-opacity:1;stroke:#ff7fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       id="rect2985-3"
+       width="62.857143"
+       height="62.857143"
+       x="493.59824"
+       y="494.75253"
+       ry="0"
+       inkscape:export-filename="/opt/mayday/img/focusClicked.png"
+       inkscape:export-xdpi="70.450096"
+       inkscape:export-ydpi="70.450096" />
+    <path
+       style="fill:none;stroke:#ffffff;stroke-width:2.50300121;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       d="m 354.8309,548.86629 c -5.28907,-30.58915 43.28027,-12.34112 33.54208,-45.3704"
+       id="path3022"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/opt/mayday/img/focusClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70" />
+    <g
+       id="g4015" />
+    <g
+       id="g4212"
+       transform="translate(-70.17857,-51.42857)">
+      <path
+         inkscape:connector-curvature="0"
+         id="path3993"
+         d="m 367.96912,513.66547 c -3.98685,1.30049 -7.12835,4.45452 -8.4375,8.4375 l 2.125,0 c 1.1374,-2.88292 3.42588,-5.18242 6.3125,-6.3125 l 0,-2.125 z m 8.15625,0 0,2.125 c 2.88662,1.13008 5.1751,3.42958 6.3125,6.3125 l 2.125,0 c -1.30915,-3.98298 -4.45065,-7.13701 -8.4375,-8.4375 z m -16.59375,16.625 c 1.30915,3.97846 4.45065,7.11026 8.4375,8.40625 l 0,-2.125 c -2.88888,-1.12649 -5.17604,-3.39964 -6.3125,-6.28125 l -2.125,0 z m 22.90625,0 c -1.13646,2.88161 -3.42361,5.15476 -6.3125,6.28125 l 0,2.125 c 3.98685,-1.29599 7.12835,-4.42779 8.4375,-8.40625 l -2.125,0 z"
+         style="font-size:medium;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:normal;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:#ff0000;fill-opacity:1;stroke:none;stroke-width:2.65425897;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Sans;-inkscape-font-specification:Sans" />
+      <path
+         inkscape:connector-curvature="0"
+         id="path4103-94"
+         d="m 372.04724,511.24182 0,6.83443"
+         style="fill:none;stroke:#ff0000;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+      <path
+         inkscape:connector-curvature="0"
+         id="path4103-94-4"
+         d="m 372.04724,534.28593 0,6.83443"
+         style="fill:none;stroke:#ff0000;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+      <path
+         inkscape:connector-curvature="0"
+         id="path4103-94-1"
+         d="m 363.72371,526.18109 -6.83443,0"
+         style="fill:none;stroke:#ff0000;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+      <path
+         inkscape:connector-curvature="0"
+         id="path4103-94-1-7"
+         d="m 387.2052,526.18109 -6.83443,0"
+         style="fill:none;stroke:#ff0000;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+    </g>
+    <g
+       id="g4263"
+       inkscape:export-filename="/opt/mayday/img/focusClicked.png"
+       inkscape:export-xdpi="70"
+       inkscape:export-ydpi="70">
+      <g
+         transform="translate(7.2938259e-7,-4.669997e-6)"
+         id="g4255">
+        <g
+           id="g4249"
+           transform="matrix(0.91373927,0.71606166,-0.71606166,0.91373927,407.82335,-221.89076)"
+           style="stroke-width:1.7228173;stroke-miterlimit:4;stroke-dasharray:none">
+          <path
+             transform="translate(-5.555839,-8.0812203)"
+             sodipodi:open="true"
+             sodipodi:end="1.768863"
+             sodipodi:start="0"
+             d="m 388.78245,526.38837 c 0,9.03087 -7.32097,16.35184 -16.35185,16.35184 -1.08047,0 -2.15827,-0.10709 -3.21762,-0.3197"
+             sodipodi:ry="16.351845"
+             sodipodi:rx="16.351845"
+             sodipodi:cy="526.38837"
+             sodipodi:cx="372.4306"
+             id="path4221"
+             style="fill:none;stroke:#ff0000;stroke-width:1.7228173;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
+             sodipodi:type="arc" />
+          <path
+             transform="matrix(-1,0,0,-1,751.99654,1060.5107)"
+             sodipodi:open="true"
+             sodipodi:end="1.768863"
+             sodipodi:start="0"
+             d="m 388.78245,526.38837 c 0,9.03087 -7.32097,16.35184 -16.35185,16.35184 -1.08047,0 -2.15827,-0.10709 -3.21762,-0.3197"
+             sodipodi:ry="16.351845"
+             sodipodi:rx="16.351845"
+             sodipodi:cy="526.38837"
+             sodipodi:cx="372.4306"
+             id="path4221-3"
+             style="fill:none;stroke:#ff0000;stroke-width:1.7228173;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
+             sodipodi:type="arc" />
+        </g>
+        <path
+           sodipodi:type="arc"
+           style="fill:none;stroke:#ff0000;stroke-width:1.9547199;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
+           id="path4253"
+           sodipodi:cx="372.27277"
+           sodipodi:cy="525.66235"
+           sodipodi:rx="4.4509845"
+           sodipodi:ry="4.4509845"
+           d="m 376.72375,525.66235 c 0,2.45821 -1.99277,4.45099 -4.45098,4.45099 -2.45821,0 -4.45099,-1.99278 -4.45099,-4.45099 0,-2.45821 1.99278,-4.45098 4.45099,-4.45098 2.45821,0 4.45098,1.99277 4.45098,4.45098 z"
+           transform="matrix(1.0231645,0,0,1.0231645,-8.8490374,-11.657968)" />
+      </g>
+      <path
+         transform="matrix(1.1452337,0,0,1.1452337,-53.964352,-75.905745)"
+         d="m 374.46428,525.73273 a 2.4776785,2.4776785 0 1 1 -4.95536,0 2.4776785,2.4776785 0 1 1 4.95536,0 z"
+         sodipodi:ry="2.4776785"
+         sodipodi:rx="2.4776785"
+         sodipodi:cy="525.73273"
+         sodipodi:cx="371.9866"
+         id="path4261"
+         style="fill:none;stroke:#8e0000;stroke-width:1.74636841000000009;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0"
+         sodipodi:type="arc" />
+    </g>
+  </g>
+</svg>
