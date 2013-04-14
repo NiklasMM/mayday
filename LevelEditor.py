@@ -14,14 +14,14 @@
 # - autojoining objects at ends to form a path
 # - automatically close a cyclic path
 # - context menu
-# - undo/redo
+# - DONE undo/redo
 # - while moving objects: hold CTRL to snap to grid
 # - path pieces cast shadows onto the ground
 # - DONE save / load sessions
 # - export finished levels
 #
 # TODO fixes
-# - observation:   boxselection + mmb/rmb -> boxselection and camera change
+# - DONE observation:   boxselection + mmb/rmb -> boxselection and camera change
 #                  at the same time, releasing one cancels boxselection
 #   problem:       this isn't user-expected behavior
 #   solution idea: while lmb dragging, ignore mmb and rmb; likewise, while
@@ -46,10 +46,7 @@ from math import pi, sin, cos
 import logging, sys, os, pickle, shelve
 from collections import deque
 from math import sqrt
-
-# import pygtk
 import gtk
-# pygtk.require('2.0')
 
 SCRIPT_PATH = os.path.dirname(__file__)
 
@@ -68,10 +65,10 @@ MOUSE_ZOOM_OUT_SPEED          = 0.1
 # Frames to wait until rendering objects in higher resolution
 HQ_FRAME_DELAY = 3
 
-# Visually indicate paths below the (z=0)-plane
+# Visually indicate paths below the (z=0)-plane by rendering sparsely
 UNDERGROUND_POINT_SKIP = 5
 
-# Don't have to hold the mouse perfectly still for "clicks" (vs dragging)
+# Don't have to keep the mouse perfectly still for "clicks" (vs dragging)
 DRAGGING_DISTANCE_THRESHOLD = 5
 
 # Camera parameters
@@ -118,6 +115,7 @@ messageQueueChange = False
 # Trivial and inefficient implementation: The entire scene status is logged...
 undoHistory = deque()
 redoHistory = deque()
+unsavedChanges = False
 
 # Tells if a click was "doing nothing" (click into empty space)
 idleClick = True
@@ -2474,6 +2472,7 @@ def main():
                 o.clickAction()
             if not GUIwasClicked:
               if len(selectedObjects)==1:
+                # On BezierArcs, the Bezier control points are draggable
                 if isinstance(so, BezierArc):
                   if so.cursorOnBezierControl(mousePos):
                     createUndoHistory()
@@ -2485,6 +2484,7 @@ def main():
                     break
                 if selectedObjects[0].cursorOnObject():
                   so = selectedObjects[0]
+                  # On all PathPieces, the end points are draggable
                   if so.cursorOnEnd(mousePos):
                     createUndoHistory()
                     dragStartedOnActiveEnd = True
@@ -2492,6 +2492,7 @@ def main():
                     createUndoHistory()
                     dragStartedOnInactiveEnd = True
                   else:
+                    # Drag to move object
                     createUndoHistory()
                     dragStartedOnSelectedObject = True
                     infoMessage("dragStartedOnSelectedObject")
@@ -2504,19 +2505,20 @@ def main():
                     infoMessage("dragStartedOnSelectedObject")
                     break
         # Button 4 is MOUSE WHEEL UP
+        # Zoom in
         elif event.button == 4:
           compute_projection_parameters(azimuth, elevation, zoom*ZOOM_IN_SPEED**2)
           rerender = True
           render_HD_override = True
         # Button 5 is MOUSE WHEEL DOWN
+        # Zoom out
         elif event.button == 5:
           compute_projection_parameters(azimuth, elevation, zoom*ZOOM_OUT_SPEED**2)
           rerender = True
           render_HD_override = True
-        #else:
-          #raise Exception('Unknown mouse button %d!' % event.button)
       # Button up
       elif event.type == pygame.MOUSEBUTTONUP:
+        if lmbDown and (mmbLastTick or rmbLastTick): continue
         # If the click was idle, forget the preemptively created history point
         if (dragStartedOnActiveEnd              or \
             dragStartedOnInactiveEnd            or \
@@ -2600,7 +2602,7 @@ def main():
     ## Change camera settings using mouse
     # azimuth and Elevation angles
     if dragManhattanDistance > DRAGGING_DISTANCE_THRESHOLD:
-      if mmbDown:
+      if mmbDown and not lmbDown:
         if mouseRelativeMotionThisTick[0] != 0 or \
            mouseRelativeMotionThisTick[1] != 0:
           compute_projection_parameters(azimuth-AZIMUTH_ANGULAR_SPEED*
@@ -2612,7 +2614,7 @@ def main():
                                         zoom)
           rerender = True
       # Move camera position
-      if rmbDown:
+      if rmbDown and not lmbDown:
         cam = Point3D.copy(CAMERA_POSITION)
         ppos = project3dToPixelPosition(cam)
         ppos[0] -= mouseRelativeMotionThisTick[0]
