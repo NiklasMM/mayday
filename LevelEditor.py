@@ -115,7 +115,8 @@ messageQueueChange = False
 # Trivial and inefficient implementation: The entire scene status is logged...
 undoHistory = deque()
 redoHistory = deque()
-unsavedChanges = False
+# The main window's title (bar "LevelEditor - " and unsaved-changes-asterisk)
+WINDOW_TITLE = ""
 
 # Tells if a click was "doing nothing" (click into empty space)
 idleClick = True
@@ -171,6 +172,14 @@ GREY2                 = (170, 170, 170)
 ROLLERCOASTER_COLOR   = (160, 160, 255)
 
 #_______________________________________________________________________
+
+
+# Decorator for unsaved changes
+def causesUnsavedChange(function):
+  def wrapper(*args, **kwargs):
+    setWindowTitle(WINDOW_TITLE, True)
+    return function(*args, **kwargs)
+  return wrapper
 
 
 class Point3D(object):
@@ -417,6 +426,7 @@ class AddStraightButton(Button):
                                             clickedImg,
                                             highlightedImg)
 
+  @causesUnsavedChange
   def clickAction(self):
     # Check if the button is enabled
     try:
@@ -448,6 +458,7 @@ class AppendStraightButton(Button):
                                                clickedImg,
                                                highlightedImg)
 
+  @causesUnsavedChange
   def clickAction(self):
     # Check if the button is enabled
     try:
@@ -479,6 +490,7 @@ class AddHelixArcButton(Button):
                                             clickedImg,
                                             highlightedImg)
 
+  @causesUnsavedChange
   def clickAction(self):
     # Check if the button is enabled
     try:
@@ -509,6 +521,7 @@ class AppendHelixArcButton(Button):
                                                clickedImg,
                                                highlightedImg)
 
+  @causesUnsavedChange
   def clickAction(self):
     # Check if the button is enabled
     try:
@@ -540,6 +553,7 @@ class AddBezierArcButton(Button):
                                              clickedImg,
                                              highlightedImg)
 
+  @causesUnsavedChange
   def clickAction(self):
     # Check if the button is enabled
     try:
@@ -570,6 +584,7 @@ class AppendBezierArcButton(Button):
                                                 clickedImg,
                                                 highlightedImg)
 
+  @causesUnsavedChange
   def clickAction(self):
     # Check if the button is enabled
     try:
@@ -665,6 +680,7 @@ class DeleteObjectsButton(Button):
                                               clickedImg,
                                               highlightedImg)
 
+  @causesUnsavedChange
   def clickAction(self, override=False):
     # Check if the button is enabled
     if not override:
@@ -1868,6 +1884,7 @@ def undo():
   deserializeScene(newState)
   getObjectByName('redoButton').enable()
 
+@causesUnsavedChange
 def redo():
   """Go forward one step in the undo history"""
   if not redoHistory:
@@ -1882,6 +1899,8 @@ def redo():
 
 def setWindowTitle(newTitle, star=True):
   """Set the window title"""
+  global WINDOW_TITLE
+  WINDOW_TITLE = newTitle
   s = 'Mayday Level Editor - %s%s' % (newTitle, '*' if star else '')
   pygame.display.set_caption(s)
 
@@ -2520,15 +2539,17 @@ def main():
       elif event.type == pygame.MOUSEBUTTONUP:
         if lmbDown and (mmbLastTick or rmbLastTick): continue
         # If the click was idle, forget the preemptively created history point
-        if (dragStartedOnActiveEnd              or \
-            dragStartedOnInactiveEnd            or \
-            dragStartedOnSelectedObject         or \
-            dragStartedOnBezierControlStart     or \
-            dragStartedOnBezierControlEnd)     and \
-            idleClick:
+        if dragStartedOnActiveEnd              or \
+           dragStartedOnInactiveEnd            or \
+           dragStartedOnSelectedObject         or \
+           dragStartedOnBezierControlStart     or \
+           dragStartedOnBezierControlEnd:
+          if idleClick:
             undoHistory.pop()
             if not undoHistory:
               getObjectByName('undoButton').disable()
+          else:
+            setWindowTitle(WINDOW_TITLE, True)
         if lmbLastTick                          and \
            not boxSelectionInProgress           and \
            not dragStartedOnGUI                 and \
