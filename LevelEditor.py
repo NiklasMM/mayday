@@ -211,6 +211,15 @@ class Point3D(object):
 		"""L2-Norm from origin to point"""
 		return sqrt(self.x**2 + self.y**2 + self.z**2)
 
+  def toRGB(self):
+    """Convert a Point3D to an RGB color triple.
+    Channel values are integer numbers clamped to a range of [0, 255]"""
+    r, g, b = self.x, self.y, self.z
+    r = max(0, min(255, int(r)))
+    g = max(0, min(255, int(g)))
+    b = max(0, min(255, int(b)))
+    return [r, g, b]
+
   def __add__(self, other):
     """self + other"""
     if not isinstance(other, Point3D):
@@ -1589,10 +1598,16 @@ class BezierArc(PathPiece):
     self.points3dHD = []
     step = 0
     # Roughly estimate the arc length
-    arclength = .5*self.bezierControlStartPoint.norm() +                \
+    """arclength = .5*self.bezierControlStartPoint.norm() +                \
                 ((self.startPoint + self.bezierControlStartPoint) -     \
                  (self.endPoint + self.bezierControlEndPoint)).norm() + \
-                .5*self.bezierControlEndPoint.norm()
+                .5*self.bezierControlEndPoint.norm() - \
+                .25*(self.startPoint -     \
+                     (self.endPoint + self.bezierControlEndPoint)).norm() - \
+                .25*(self.endPoint -     \
+                     (self.startPoint + self.bezierControlStartPoint)).norm()"""
+    arclength = ((self.startPoint + .5*self.bezierControlStartPoint) -     \
+                 (self.endPoint + .5*self.bezierControlEndPoint)).norm()
     steps = int(arclength)
     # Avoid nasty divide-by-zero errors
     steps = max(100, steps)
@@ -2375,20 +2390,12 @@ def main():
   framesWithoutRerendering = 0
 
   ### DEBUG
-  """objectsList.append(HelixArc(startHeight=-40., endHeight=140.,
-                               startAngle=180., endAngle=360.,
-                               radius=50., center=Point3D(),
-                               rightHanded=True, color=(0,0,255),
-                               gamma=1.))
-  objectsList.append(HelixArc(startHeight=20., endHeight=140.,
-                               startAngle=-360., endAngle=360.,
-                               radius=100., center=Point3D(0,100,0),
-                               rightHanded=False, color=(0,0,255),
-                               gamma=1.))"""
   objectsList.append(BezierArc(startPoint3D=Point3D(100,0,-50),
                                endPoint3D=Point3D(-100,0,50),
                                bezierControlStartPoint3D=Point3D(0,50,0),
                                bezierControlEndPoint3D=Point3D(0,-50,0)))
+  objectsList.append(HelixArc())
+  objectsList.append(Straight())
 
   # Prerender font object
   toggleDebugTextObj = pygame.font.SysFont(None, 18).render('Press H to toggle debug information.',
@@ -2591,11 +2598,15 @@ def main():
     # Check current status of keyboard keys
     pressedKeys = pygame.key.get_pressed()
 
+    CtrlKeyPressed  = pressedKeys[pygame.K_LCTRL]  or \
+                      pressedKeys[pygame.K_RCTRL]
+    ShiftKeyPressed = pressedKeys[pygame.K_RSHIFT] or \
+                      pressedKeys[pygame.K_LSHIFT]
+
     if pressedKeys[pygame.K_h] and not pressedKeysLastTick[pygame.K_h]:
       printDebug = not printDebug
     # Change camera settings using keyboard
-    if pressedKeys[pygame.K_a] and not \
-       pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
+    if pressedKeys[pygame.K_a] and not CtrlKeyPressed:
       compute_projection_parameters(azimuth-AZIMUTH_ANGULAR_SPEED, elevation, zoom)
       rerender = True
     if pressedKeys[pygame.K_d]:
@@ -2604,8 +2615,7 @@ def main():
     if pressedKeys[pygame.K_w]:
       compute_projection_parameters(azimuth, elevation+ELEVATION_ANGULAR_SPEED, zoom)
       rerender = True
-    if pressedKeys[pygame.K_s] and not \
-       pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
+    if pressedKeys[pygame.K_s] and not CtrlKeyPressed:
       compute_projection_parameters(azimuth, elevation-ELEVATION_ANGULAR_SPEED, zoom)
       rerender = True
     if pressedKeys[pygame.K_HOME]:
@@ -2636,11 +2646,14 @@ def main():
           rerender = True
       # Move camera position
       if rmbDown and not lmbDown:
-        cam = Point3D.copy(CAMERA_POSITION)
-        ppos = project3dToPixelPosition(cam)
-        ppos[0] -= mouseRelativeMotionThisTick[0]
-        ppos[1] -= mouseRelativeMotionThisTick[1]
-        CAMERA_POSITION += unprojectPixelTo3dPosition(ppos)-CAMERA_POSITION
+        if ShiftKeyPressed:
+          CAMERA_POSITION.z += mouseRelativeMotionThisTick[1]
+        else:
+          cam = Point3D.copy(CAMERA_POSITION)
+          ppos = project3dToPixelPosition(cam)
+          ppos[0] -= mouseRelativeMotionThisTick[0]
+          ppos[1] -= mouseRelativeMotionThisTick[1]
+          CAMERA_POSITION += unprojectPixelTo3dPosition(ppos)-CAMERA_POSITION
         rerender = True
 
       """# Zoom factor
@@ -2662,7 +2675,7 @@ def main():
 
     ## Keyboard shortcuts
     if pressedKeysLastTick != pressedKeys:
-      if pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
+      if CtrlKeyPressed:
         # Ctrl+A: Select all objects
         if pressedKeys[pygame.K_a] and not pressedKeysLastTick[pygame.K_a]:
           infoMessage("Select all")
@@ -2729,7 +2742,7 @@ def main():
       # Move selected object(s)
       if dragStartedOnSelectedObject:
         # Motion along z-axis
-        if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+        if ShiftKeyPressed:
           for so in selectedObjects:
             so.moveTo(Point3D(so.center.x,
                               so.center.y,
@@ -2746,27 +2759,26 @@ def main():
         if isinstance(so, HelixArc):
           if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
             # Change a HelixArc's RADIUS using the SHIFT+CTRL keys
-            if (pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]) and \
-               (pressedKeys[pygame.K_LCTRL]  or pressedKeys[pygame.K_RCTRL]):
+            if ShiftKeyPressed and CtrlKeyPressed:
               so.radius += mouseRelativeMotionThisTick[0]
               so.recompute()
               so.render(True)
             # Change a HelixArc's HEIGHT using the SHIFT key
-            elif pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+            elif ShiftKeyPressed:
               pos = so.getEndPoint3d(dragStartedOnActiveEnd)
               pos = Point3D(pos.x,
                             pos.y,
                             pos.z-mouseRelativeMotionThisTick[1])
               so.setEndPos3d(pos, dragStartedOnActiveEnd)
             # Change a HelixArc's LENGTH using the CTRL key
-            elif pressedKeys[pygame.K_LCTRL] or pressedKeys[pygame.K_RCTRL]:
+            elif CtrlKeyPressed:
               so.changeAngles(mouseRelativeMotionThisTick,
                               dragStartedOnActiveEnd)
         ## BezierArcs
         elif isinstance(so, BezierArc):
           if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
             # Change a BezierArc's HEIGHT using the SHIFT key
-            if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+            if ShiftKeyPressed:
               pos = so.getEndPoint3d(dragStartedOnActiveEnd)
               pos = Point3D(pos.x,
                             pos.y,
@@ -2783,7 +2795,7 @@ def main():
           elif dragStartedOnBezierControlStart or dragStartedOnBezierControlEnd:
             # Change a BezierArc's control points
             # Along the z axis
-            if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+            if ShiftKeyPressed:
               pos = so.getBezierControl(dragStartedOnBezierControlStart)
               pos = Point3D(pos.x,
                             pos.y,
@@ -2802,13 +2814,12 @@ def main():
         elif isinstance(so, Straight):
           if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
             # Move endpoint along z-axis
-            if pressedKeys[pygame.K_RSHIFT] or pressedKeys[pygame.K_LSHIFT]:
+            if ShiftKeyPressed:
               pos = so.getEndPoint3d(dragStartedOnActiveEnd)
               pos = Point3D(pos.x,
                             pos.y,
                             pos.z-mouseRelativeMotionThisTick[1])
               so.setEndPos3d(pos, dragStartedOnActiveEnd)
-            #elif pressedKeys[pygame.K_RCTRL] or pressedKeys[pygame.K_LCTRL]:
             else:
               pos = so.getEndPoint3d(dragStartedOnActiveEnd)
               z = pos.z
