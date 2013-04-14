@@ -656,6 +656,7 @@ class FlattenPathPieceButton(Button):
                                                 clickedImg,
                                                 highlightedImg)
 
+  @causesUnsavedChange
   def clickAction(self):
     # Check if the button is enabled
     try:
@@ -664,8 +665,11 @@ class FlattenPathPieceButton(Button):
       return None
     so = selectedObjects[0]
     if isinstance(so, (BezierArc, Straight)):
-			so.startPoint.z = 0
-			so.endPoint.z = 0
+      so.startPoint.z = 0
+      so.endPoint.z = 0
+      if isinstance(so, BezierArc):
+        so.bezierControlStartPoint.z = 0
+        so.bezierControlEndPoint.z = 0
     else:
 			so.startHeight = 0
 			so.endHeight = 0
@@ -1395,25 +1399,26 @@ class HelixArc(PathPiece):
     steps = min(1000, steps)
     heightstep = (self.endHeight-self.startHeight)/steps
     anglestep = (self.endAngle-self.startAngle)/steps
-    """# Sample points along the curve
+    # Sample points along the curve
     for step in range(steps):
       a = angle if self.rightHanded else (360.-angle)
       x = cos(a*(pi/180.))*self.radius
       y = sin(a*(pi/180.))*self.radius
       # Gamma correction-style height recomputation (keeps range)
-      z = self.startHeight + \
+      z = height
+      """z = self.startHeight + \
             (self.endHeight-self.startHeight) * \
             ((height-self.startHeight)/(self.endHeight-self.startHeight)) ** \
-              (1./self.gamma)
+              (1./self.gamma)"""
       # Enable drawing in low and high resolution
       self.points3dHD.append(Point3D(x,y,z))
       # Ensure that the first and last point are in the low res samples
       if step % 10 == 0 or step == steps-1:
         self.points3d.append(Point3D(x,y,z))
       angle += anglestep
-      height += heightstep"""
+      height += heightstep
 
-    # Bezier curve computation
+    """# Bezier curve computation
     # Control points
     P0 = Point3D(self.startAngle, self.startHeight,    0.)
     P1 = Point3D(self.startAngle, self.startHeight,    0.)
@@ -1436,7 +1441,7 @@ class HelixArc(PathPiece):
       if step % 10 == 0 or step == steps-1:
         self.points3d.append(Point3D(x,y,z))
       angle += anglestep
-      height += heightstep
+      height += heightstep"""
 
 
   def getEndPoint3d(self, getActiveEnd):
@@ -1806,26 +1811,9 @@ class BezierArc(PathPiece):
     on the viewing direction.
     """
     if self.selected and len(selectedObjects)==1:
-      """pos  = self.points3d[0] if self.activeEnd == 0 else self.points3d[-1]
-      ppos = project3dToPixelPosition(pos + self.center)
-      self.activeEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
-                                int(ppos[1])-CLICK_TOLERANCE_RADIUS)
-      pos  = self.points3d[-1] if self.activeEnd == 0 else self.points3d[0]
-      ppos = project3dToPixelPosition(pos + self.center)
-      self.inactiveEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
-                                  int(ppos[1])-CLICK_TOLERANCE_RADIUS)
-      pos  = self.startPoint+self.bezierControlStartPoint
-      ppos = project3dToPixelPosition(pos + self.center)
-      self.bezierControlStartPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
-                                         int(ppos[1])-CLICK_TOLERANCE_RADIUS)
-      pos  = self.endPoint+self.bezierControlEndPoint
-      ppos = project3dToPixelPosition(pos + self.center)
-      self.bezierControlEndPixelPos = (int(ppos[0])-CLICK_TOLERANCE_RADIUS,
-                                       int(ppos[1])-CLICK_TOLERANCE_RADIUS)"""
-
-      if ROLLERCOASTER_HEIGHTS:
+      """if ROLLERCOASTER_HEIGHTS:
         for p in self.points3d[::5]:
-          drawHelpLines(p+self.center, screen, ROLLERCOASTER_COLOR)
+          drawHelpLines(p+self.center, screen, ROLLERCOASTER_COLOR)"""
 
       drawPotentialConnectionLine(self.startPoint+self.center,
                                   self.startPoint+self.center+self.bezierControlStartPoint,
@@ -2913,10 +2901,14 @@ def main():
                       screen,
                       GREY1)
       if isinstance(so, BezierArc):
-        drawHelpLines(so.getBezierControl(True)+so.getEndPoint3d(True)+so.center,
+        drawHelpLines(so.getBezierControl(True)         + \
+                      so.getEndPoint3d(so.activeEnd==0) + \
+                      so.center,
                       screen,
                       GREY2)
-        drawHelpLines(so.getBezierControl(False)+so.getEndPoint3d(False)+so.center,
+        drawHelpLines(so.getBezierControl(False)        + \
+                      so.getEndPoint3d(so.activeEnd==1) + \
+                      so.center,
                       screen,
                       GREY2)
 
