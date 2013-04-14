@@ -140,7 +140,7 @@ TOOLTIP_TEXTS = {
                  "ChangeActiveEndButton":
                   "Switch between the active ends of a path piece",
                  "DeleteObjectsButton":
-                  "Permanently delete all selected objects (Del)",
+                  "Permanently delete all selected objects [Del]",
                  "LoadSceneButton":
                   "Load an existing scene from disk (unsaved changes will be lost!) [Ctrl-O]",
                  "SaveSceneButton":
@@ -150,11 +150,13 @@ TOOLTIP_TEXTS = {
                  "ExitProgramButton":
                   "Exit the program (unsaved changes will be lost!)",
                  "UndoButton":
-                  "Undo the last operation",
+                  "Undo the last operation [Ctrl-Z]",
                  "RedoButton":
-                  "Repeat the last undone operation",
+                  "Repeat the last undone operation [Ctrl-Y]",
                  "FlattenPathPieceButton":
-                  "Align a path piece into a plane"
+                  "Align a path piece into a plane",
+                 "FocusButton":
+                  "Focus the camera on the selected objects [F]"
                 }
 TOOLTIP_SURFACEOBJECTS = {}
 
@@ -910,10 +912,10 @@ class UndoButton(Button):
     clickedImg = pygame.image.load('{}/img/undoClicked.png'.format(SCRIPT_PATH))
     highlightedImg = pygame.image.load('{}/img/undoHighlighted.png'.format(SCRIPT_PATH))
     super(UndoButton, self).__init__(name,
-                                            buttonRect,
-                                            img,
-                                            clickedImg,
-                                            highlightedImg)
+                                     buttonRect,
+                                     img,
+                                     clickedImg,
+                                     highlightedImg)
 
   def clickAction(self):
     # Check if the button is enabled
@@ -937,10 +939,10 @@ class RedoButton(Button):
     clickedImg = pygame.image.load('{}/img/redoClicked.png'.format(SCRIPT_PATH))
     highlightedImg = pygame.image.load('{}/img/redoHighlighted.png'.format(SCRIPT_PATH))
     super(RedoButton, self).__init__(name,
-                                            buttonRect,
-                                            img,
-                                            clickedImg,
-                                            highlightedImg)
+                                     buttonRect,
+                                     img,
+                                     clickedImg,
+                                     highlightedImg)
 
   def clickAction(self):
     # Check if the button is enabled
@@ -952,6 +954,33 @@ class RedoButton(Button):
 
   def tooltip(self, screen, mousePos=None):
     super(RedoButton, self).tooltip(screen, mousePos, "RedoButton")
+
+
+
+class FocusButton(Button):
+  def __init__(self, name="FocusButton",
+               buttonRect=pygame.Rect(0,0,0,0),
+               buttonSurfaceObj=pygame.Surface((0,0)),
+               buttonClickedSurfaceObj=pygame.Surface((0,0))):
+    img = pygame.image.load('{}/img/focus.png'.format(SCRIPT_PATH))
+    clickedImg = pygame.image.load('{}/img/focusClicked.png'.format(SCRIPT_PATH))
+    highlightedImg = pygame.image.load('{}/img/focusHighlighted.png'.format(SCRIPT_PATH))
+    super(FocusButton, self).__init__(name,
+                                      buttonRect,
+                                      img,
+                                      clickedImg,
+                                      highlightedImg)
+
+  def clickAction(self):
+    # Check if the button is enabled
+    try:
+      super(FocusButton, self).clickAction()
+    except:
+      return None
+    focusCameraOnSelectedObjects()
+
+  def tooltip(self, screen, mousePos=None):
+    super(FocusButton, self).tooltip(screen, mousePos, "FocusButton")
 
 
 
@@ -1947,6 +1976,14 @@ def compute_projection_parameters(newazimuth, newelevation, newzoom):
   up = [0, sin(elevation)]
   zoom = min(10., max(0.1, newzoom))
 
+def focusCameraOnSelectedObjects():
+  """Focus the camera on the selected objects.
+  If the selection includes multiple objects, focus on the mean."""
+  if not selectedObjects:
+    return
+  global CAMERA_POSITION
+  object_centers = [o.center for o in selectedObjects]
+  CAMERA_POSITION = sum(object_centers, Point3D())/float(len(object_centers))
 
 def project3dToPixelPosition(c, origin=None):
   if origin is None:
@@ -1979,6 +2016,7 @@ def unprojectPixelTo3dPosition(p, origin=None, height=0.):
   # There are three variables (x,y,z), but only two equations. That is why the
   # function parameter HEIGHT is necessary to get an overdetermined system.
   # (The ORIGIN is assumed to be constant.)
+  height -= CAMERA_POSITION.z
   if origin is None:
     origin = ORIGIN
   y = ((p[1]-origin[1])/(zoom*front[1]) -                                \
@@ -2089,8 +2127,10 @@ def makeGUIButtons():
                 (WINDOW_SIZE[0], 150)),
              (FlattenPathPieceButton, "flattenPathPieceButton",
                 (WINDOW_SIZE[0], 200)),
+             (FocusButton, "focusButton",
+                (WINDOW_SIZE[0], 250)),
              (DeleteObjectsButton, "deleteObjectsButton",
-                (WINDOW_SIZE[0], 300)),
+                (WINDOW_SIZE[0], 350)),
              (UndoButton, "undoButton",
                 (WINDOW_SIZE[0]//2,0)),
              (RedoButton, "redoButton",
@@ -2110,6 +2150,7 @@ def makeGUIButtons():
   getObjectByName("appendHelixArcButton").disable()
   getObjectByName("appendBezierArcButton").disable()
   getObjectByName("deleteObjectsButton").disable()
+  getObjectByName("focusButton").disable()
   getObjectByName("undoButton").disable()
   getObjectByName("redoButton").disable()
 
@@ -2290,7 +2331,8 @@ def processResizeEvent(event, screen):
              ("appendBezierArcButton",  (WINDOW_SIZE[0]-50, 100)),
              ("changeActiveEndButton",  (WINDOW_SIZE[0], 150)),
              ("flattenPathPieceButton", (WINDOW_SIZE[0], 200)),
-             ("deleteObjectsButton",    (WINDOW_SIZE[0], 300)),
+             ("focusButton",            (WINDOW_SIZE[0], 250)),
+             ("deleteObjectsButton",    (WINDOW_SIZE[0], 350)),
              ("undoButton",             (WINDOW_SIZE[0]//2,0)),
              ("redoButton",             (WINDOW_SIZE[0]//2+50,0)))
   for name, pos in buttons:
@@ -2496,6 +2538,8 @@ def main():
                 infoMessage("dragStartedOnGUI")
                 o.activate()
                 o.clickAction()
+                if isinstance(o, FocusButton):
+                  rerender = render_HD_override = True
             if not GUIwasClicked:
               if len(selectedObjects)==1:
                 # On BezierArcs, the Bezier control points are draggable
@@ -2629,6 +2673,9 @@ def main():
     if pressedKeys[pygame.K_PLUS]:
       compute_projection_parameters(azimuth, elevation, zoom*ZOOM_IN_SPEED)
       rerender = True
+    if pressedKeys[pygame.K_f]:
+      focusCameraOnSelectedObjects()
+      rerender = render_HD_override = True
 
     ## Change camera settings using mouse
     # azimuth and Elevation angles
@@ -2929,8 +2976,10 @@ def main():
 
     if not selectedObjects:
       getObjectByName('deleteObjectsButton').disable()
+      getObjectByName('focusButton').disable()
     else:
       getObjectByName('deleteObjectsButton').enable()
+      getObjectByName('focusButton').enable()
 
     # Draw GUI buttons
     for o in objectsList:
