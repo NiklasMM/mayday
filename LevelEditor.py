@@ -45,6 +45,7 @@ import pygame
 from math import pi, sin, cos
 import logging, sys, os, pickle, shelve
 from collections import deque
+from math import sqrt
 
 # import pygtk
 import gtk
@@ -63,6 +64,12 @@ MOUSE_AZIMUTH_ANGULAR_SPEED   = 0.1
 MOUSE_ELEVATION_ANGULAR_SPEED = 0.1
 MOUSE_ZOOM_IN_SPEED           = 0.1
 MOUSE_ZOOM_OUT_SPEED          = 0.1
+
+# Frames to wait until rendering objects in higher resolution
+HQ_FRAME_DELAY = 3
+
+# Visually indicate paths below the (z=0)-plane
+UNDERGROUND_POINT_SKIP = 5
 
 # Don't have to hold the mouse perfectly still for "clicks" (vs dragging)
 DRAGGING_DISTANCE_THRESHOLD = 5
@@ -182,6 +189,7 @@ class Point3D(object):
 
   @classmethod
   def fromList(cls, other):
+    """Create Point3D from (x,y,z) or [x,y,z]"""
     if not isinstance(other, (list, tuple)):
       raise TypeError
     if not len(other)==3:
@@ -189,8 +197,12 @@ class Point3D(object):
     return Point3D(other[0], other[1], other[2])
 
   def xy(self):
-    """Return the coordinates on the (z=0)-plane"""
+    """Point projected to the (z=0)-plane"""
     return Point3D(self.x, self.y, 0)
+
+  def norm(self):
+		"""L2-Norm from origin to point"""
+		return sqrt(self.x**2 + self.y**2 + self.z**2)
 
   def __add__(self, other):
     """self + other"""
@@ -953,9 +965,6 @@ class PathPiece(ClickRegisteringObject):
 
 
 class Straight(PathPiece):
-  # Number of frames to wait until rendering in high resolution
-  _HQFrameDelay = 3
-
   def __init__(self,
                startPoint3D=Point3D(50,0,0),
                endPoint3D=Point3D(-50,0,0),
@@ -973,7 +982,7 @@ class Straight(PathPiece):
     self.points3d = []
     self.points3dHD = []
     self.recompute()
-    self.render()
+    self.render(True)
 
   def shelve(self):
     """Save a Straight instance to file"""
@@ -997,11 +1006,12 @@ class Straight(PathPiece):
     self.points3d = []
     self.points3dHD = []
     step = 0
-    steps = 500
+    # The number of samples depends directly on the Path length
+    steps = int((self.endPoint - self.startPoint).norm())
     # Avoid nasty divide-by-zero errors
     steps = max(100, steps)
     # Limit the number of samples to avoid lag
-    steps = min(2500, steps)
+    steps = min(1000, steps)
     # Bezier curve computation
     self.points3d = []
     self.points3dHD = []
@@ -1080,7 +1090,7 @@ class Straight(PathPiece):
     # NOTE that AA is performed using only the alpha channel!
     for i, (p, z) in enumerate(pixels):
       # Visualize parts that are "below" the (z=0)-plane differently
-      if z < 0 and i%10!=0: continue
+      if z < 0 and i % UNDERGROUND_POINT_SKIP != 0: continue
       xint, xfrac = divmod(p[0], 1)
       yint, yfrac = divmod(p[1], 1)
 
@@ -1266,9 +1276,6 @@ class Straight2(PathPiece):
 
 
 class HelixArc(PathPiece):
-  # Number of frames to wait until rendering in high resolution
-  _HQFrameDelay = 3
-
   def __init__(self,
                startHeight=-40., endHeight=40.,
                startAngle=0., endAngle=360.,
@@ -1292,7 +1299,7 @@ class HelixArc(PathPiece):
     self.points3d = []
     self.points3dHD = []
     self.recompute()
-    self.render()
+    self.render(True)
 
   def shelve(self):
     """Save a HelixArc instance to file"""
@@ -1333,7 +1340,7 @@ class HelixArc(PathPiece):
     # Avoid nasty divide-by-zero errors
     steps = max(100, steps)
     # Limit the number of samples to avoid lag
-    steps = min(2500, steps)
+    steps = min(1000, steps)
     heightstep = (self.endHeight-self.startHeight)/steps
     anglestep = (self.endAngle-self.startAngle)/steps
     """# Sample points along the curve
@@ -1455,7 +1462,7 @@ class HelixArc(PathPiece):
     # NOTE that AA is performed using only the alpha channel!
     for i, (p, z) in enumerate(pixels):
       # Visualize parts that are "below" the (z=0)-plane differently
-      if z < 0 and i%10!=0: continue
+      if z < 0 and i % UNDERGROUND_POINT_SKIP != 0: continue
       xint, xfrac = divmod(p[0], 1)
       yint, yfrac = divmod(p[1], 1)
 
@@ -1516,9 +1523,6 @@ class HelixArc(PathPiece):
 
 
 class BezierArc(PathPiece):
-  # Number of frames to wait until rendering in high resolution
-  _HQFrameDelay = 3
-
   def __init__(self,
                startPoint3D=Point3D(50,0,0),
                endPoint3D=Point3D(-50,0,0),
@@ -1542,7 +1546,7 @@ class BezierArc(PathPiece):
     self.points3d = []
     self.points3dHD = []
     self.recompute()
-    self.render()
+    self.render(True)
 
   def shelve(self):
     """Save a BezierArc instance to file"""
@@ -1570,11 +1574,16 @@ class BezierArc(PathPiece):
     self.points3d = []
     self.points3dHD = []
     step = 0
-    steps = 500
+    # Roughly estimate the arc length
+    arclength = .5*self.bezierControlStartPoint.norm() +                \
+                ((self.startPoint + self.bezierControlStartPoint) -     \
+                 (self.endPoint + self.bezierControlEndPoint)).norm() + \
+                .5*self.bezierControlEndPoint.norm()
+    steps = int(arclength)
     # Avoid nasty divide-by-zero errors
     steps = max(100, steps)
     # Limit the number of samples to avoid lag
-    steps = min(2500, steps)
+    steps = min(1000, steps)
     # Bezier curve computation
     self.points3d = []
     self.points3dHD = []
@@ -1697,7 +1706,7 @@ class BezierArc(PathPiece):
     # NOTE that AA is performed using only the alpha channel!
     for i, (p, z) in enumerate(pixels):
       # Visualize parts that are "below" the (z=0)-plane differently
-      if z < 0 and i%10!=0: continue
+      if z < 0 and i % UNDERGROUND_POINT_SKIP != 0: continue
       xint, xfrac = divmod(p[0], 1)
       yint, yfrac = divmod(p[1], 1)
 
@@ -2387,10 +2396,10 @@ def main():
     # Performance trick: Don't do ANYTHING unless something happens!
     # NOTE that even mouse movement within the game window is an event.
     #
-    # (totalFrameCount > HelixArc._HQFrameDelay) is a hack to ensure that the
+    # (totalFrameCount > HQ_FRAME_DELAY is a hack to ensure that the
     # first few frames are rendered even if no events occur
     if not pygame.event.peek() and \
-       totalFrameCount > HelixArc._HQFrameDelay and \
+       totalFrameCount > HQ_FRAME_DELAY and \
        not framesWithoutRerendering < 3:
       thisTickEvents.append(pygame.event.wait())
 
@@ -2498,10 +2507,12 @@ def main():
         elif event.button == 4:
           compute_projection_parameters(azimuth, elevation, zoom*ZOOM_IN_SPEED**2)
           rerender = True
+          render_HD_override = True
         # Button 5 is MOUSE WHEEL DOWN
         elif event.button == 5:
           compute_projection_parameters(azimuth, elevation, zoom*ZOOM_OUT_SPEED**2)
           rerender = True
+          render_HD_override = True
         #else:
           #raise Exception('Unknown mouse button %d!' % event.button)
       # Button up
@@ -2795,8 +2806,8 @@ def main():
     else:
       framesWithoutRerendering += 1
 
-    # Render HelixArcs in good quality if the scene is stationary
-    if framesWithoutRerendering == HelixArc._HQFrameDelay:
+    # Render PathPieces in good quality if the scene is stationary
+    if framesWithoutRerendering == HQ_FRAME_DELAY:
       infoMessage("Rendering in HD...")
       for o in objectsList:
         if isinstance(o, PathPiece):
