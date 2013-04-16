@@ -222,6 +222,11 @@ class Point3D(object):
     b = max(0, min(255, int(b)))
     return [r, g, b]
 
+  def snapToNearestGridPoint(self):
+    """Round the Point3D to the nearest grid crossing"""
+    self.x = round(self.x/50)*50
+    self.y = round(self.y/50)*50
+
   def __add__(self, other):
     """self + other"""
     if not isinstance(other, Point3D):
@@ -1712,7 +1717,7 @@ class BezierArc(PathPiece):
       self.bezierControlStartPoint = Point3D.copy(newPos)
     else:
       self.bezierControlEndPoint   = Point3D.copy(newPos)
-    handle = Point3D.copy(newPos)
+    #handle = Point3D.copy(newPos)
     self.recompute()
     self.render(True)
 
@@ -2826,6 +2831,13 @@ def main():
               ppos[0] += mouseRelativeMotionThisTick[0]
               ppos[1] += mouseRelativeMotionThisTick[1]
               pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+              if CtrlKeyPressed:
+                # Snap to grid
+                z += so.center.z
+                ppos = mousePos
+                pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+                pos.snapToNearestGridPoint()
+                pos -= so.center
               so.setEndPos3d(pos, dragStartedOnActiveEnd)
           elif dragStartedOnBezierControlStart or dragStartedOnBezierControlEnd:
             # Change a BezierArc's control points
@@ -2844,24 +2856,40 @@ def main():
               ppos[0] += mouseRelativeMotionThisTick[0]
               ppos[1] += mouseRelativeMotionThisTick[1]
               pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+              if CtrlKeyPressed:
+                # Snap to grid
+                offset = so.startPoint if dragStartedOnBezierControlStart \
+                                       else so.endPoint
+                z += so.center.z + offset.z
+                ppos = mousePos
+                pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+                pos.snapToNearestGridPoint()
+                pos -= so.center
+                pos -= offset
               so.setBezierControl(pos, dragStartedOnBezierControlStart)
         ## Straights
         elif isinstance(so, Straight):
           if dragStartedOnActiveEnd or dragStartedOnInactiveEnd:
+            pos = so.getEndPoint3d(dragStartedOnActiveEnd)
             # Move endpoint along z-axis
             if ShiftKeyPressed:
-              pos = so.getEndPoint3d(dragStartedOnActiveEnd)
               pos = Point3D(pos.x,
                             pos.y,
                             pos.z-mouseRelativeMotionThisTick[1])
               so.setEndPos3d(pos, dragStartedOnActiveEnd)
             else:
-              pos = so.getEndPoint3d(dragStartedOnActiveEnd)
               z = pos.z
               ppos = project3dToPixelPosition(pos)
               ppos[0] += mouseRelativeMotionThisTick[0]
               ppos[1] += mouseRelativeMotionThisTick[1]
               pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+              if CtrlKeyPressed:
+                # Snap to grid
+                z += so.center.z
+                ppos = mousePos
+                pos = unprojectPixelTo3dPosition(ppos, ORIGIN, z)
+                pos.snapToNearestGridPoint()
+                pos -= so.center
               so.setEndPos3d(pos, dragStartedOnActiveEnd)
 
 
